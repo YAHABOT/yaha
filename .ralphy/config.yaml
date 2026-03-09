@@ -1,0 +1,34 @@
+project:
+  name: "yaha"
+  language: "TypeScript"
+  framework: "Next.js"
+
+commands:
+  test: "npm test"
+  lint: "npm run lint"
+  build: "npm run build"
+
+rules:
+  - "TypeScript strict mode always — no 'any' types, no implicit returns"
+  - "All Supabase operations must use Row Level Security (RLS)"
+  - "Never hardcode secrets — use .env.local only"
+  - "Server Actions for all UI mutations, Route Handlers for webhooks only"
+  - "No feature ships without code-reviewer + security-reviewer + qa-agent PASS"
+  - "Always say 'tracker' — never 'container'"
+  - "OLED theme only: background #050505, surface #0A0A0A — no white backgrounds"
+  - "Server Components by default — 'use client' must be justified"
+
+boundaries:
+  never_touch:
+    - "*.lock"
+    - ".env.local"
+    - ".env"
+    - "supabase/migrations/**"
+    - ".claude/**"
+    - "CLAUDE.md"
+    - "MEMORY.md"
+
+notifications:
+  # Uncomment and fill in when ready:
+  # discord_webhook: "https://discord.com/api/webhooks/..."
+  # slack_webhook: "https://hooks.slack.com/services/..."

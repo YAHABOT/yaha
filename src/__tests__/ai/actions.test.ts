@@ -100,6 +100,16 @@ describe('validateActionCard', () => {
     expect(result?.trackerId).toBe('tracker-123')
     expect(result?.type).toBe('LOG_DATA')
   })
+
+  it('defaults source to "chat" when AI returns an invalid source value', () => {
+    const result = validateActionCard({ ...VALID_CARD, source: 'web' })
+    expect(result?.source).toBe('chat')
+  })
+
+  it('preserves valid source values', () => {
+    expect(validateActionCard({ ...VALID_CARD, source: 'telegram' })?.source).toBe('telegram')
+    expect(validateActionCard({ ...VALID_CARD, source: 'manual' })?.source).toBe('manual')
+  })
 })
 
 // --- sanitizeFields ---

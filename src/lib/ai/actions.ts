@@ -1,14 +1,13 @@
 import type { ActionCard } from '@/types/action-card'
 
-const JSON_FENCE_REGEX = /```json\s*([\s\S]*?)```/g
+const VALID_SOURCES = new Set(['chat', 'telegram', 'manual'])
 
 export function parseActionCards(responseText: string): ActionCard[] {
   const cards: ActionCard[] = []
+  const regex = /```json\s*([\s\S]*?)```/g
 
   let match: RegExpExecArray | null
-  JSON_FENCE_REGEX.lastIndex = 0
-
-  while ((match = JSON_FENCE_REGEX.exec(responseText)) !== null) {
+  while ((match = regex.exec(responseText)) !== null) {
     const raw = match[1].trim()
 
     let parsed: unknown
@@ -47,7 +46,12 @@ export function validateActionCard(card: unknown): ActionCard | null {
   if (!c.fields || typeof c.fields !== 'object' || Array.isArray(c.fields)) return null
   if (typeof c.date !== 'string' || c.date.length === 0) return null
 
-  return c as ActionCard
+  // Validate and default source
+  const source = VALID_SOURCES.has(c.source as string)
+    ? (c.source as ActionCard['source'])
+    : 'chat'
+
+  return { ...c, source } as ActionCard
 }
 
 type SchemaField = {
@@ -82,7 +86,7 @@ export function sanitizeFields(
       }
 
       if (
-        schemaDef.label.toLowerCase().includes('weight') &&
+        (schemaDef.unit === 'kg' || schemaDef.unit === 'lbs') &&
         num > WEIGHT_SANITY_MAX
       ) {
         result[schemaDef.fieldId] = null

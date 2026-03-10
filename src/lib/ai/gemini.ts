@@ -4,7 +4,9 @@ import { parseActionCards } from './actions'
 
 export const GEMINI_MODEL = 'gemini-2.5-flash'
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY environment variable is not set')
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY })
 
 type ContentPart =
   | { text: string }

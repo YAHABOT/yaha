@@ -20,7 +20,6 @@ import type { ChatInput } from '@/types/action-card'
 const BASE_INPUT: ChatInput = {
   text: 'I had 350 calories of chicken',
   sessionId: 'session-abc',
-  userId: 'user-xyz',
 }
 
 // --- processHealthMessage ---
@@ -59,6 +58,16 @@ describe('processHealthMessage', () => {
     await expect(
       processHealthMessage(inputWithAttachment, 'system prompt')
     ).resolves.toHaveProperty('text')
+  })
+
+  it('throws for disallowed attachment MIME type', async () => {
+    const inputWithBadMime: ChatInput = {
+      ...BASE_INPUT,
+      attachments: [{ type: 'file', base64: 'abc', mimeType: 'application/x-executable' }],
+    }
+    await expect(
+      processHealthMessage(inputWithBadMime, 'system prompt')
+    ).rejects.toThrow('Unsupported attachment MIME type')
   })
 
   it('parses action cards from response text when JSON block is present', async () => {

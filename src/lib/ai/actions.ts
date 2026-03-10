@@ -46,12 +46,19 @@ export function validateActionCard(card: unknown): ActionCard | null {
   if (!c.fields || typeof c.fields !== 'object' || Array.isArray(c.fields)) return null
   if (typeof c.date !== 'string' || c.date.length === 0) return null
 
-  // Validate and default source
-  const source = VALID_SOURCES.has(c.source as string)
+  // Validate and default source — never spread raw AI object to prevent prototype pollution
+  const source: ActionCard['source'] = VALID_SOURCES.has(c.source as string)
     ? (c.source as ActionCard['source'])
     : 'chat'
 
-  return { ...c, source } as ActionCard
+  return {
+    type: 'LOG_DATA',
+    trackerId: c.trackerId as string,
+    trackerName: c.trackerName as string,
+    fields: c.fields as Record<string, number | string | null>,
+    date: c.date as string,
+    source,
+  }
 }
 
 type SchemaField = {
@@ -63,6 +70,7 @@ type SchemaField = {
 
 const WEIGHT_SANITY_MAX = 500
 const HOURS_MAX = 24
+const MINUTES_MAX = 1440 // 24 hours in minutes — reject hallucinated values above this
 const MINUTES_TO_HOURS_DIVISOR = 60
 const DURATION_ROUND_FACTOR = 10
 
@@ -94,6 +102,11 @@ export function sanitizeFields(
       }
 
       if (schemaDef.unit === 'hrs' && num > HOURS_MAX) {
+        // Reject values that exceed the maximum plausible minutes (24h = 1440 min)
+        if (num > MINUTES_MAX) {
+          result[schemaDef.fieldId] = null
+          continue
+        }
         const converted =
           Math.round((num / MINUTES_TO_HOURS_DIVISOR) * DURATION_ROUND_FACTOR) /
           DURATION_ROUND_FACTOR

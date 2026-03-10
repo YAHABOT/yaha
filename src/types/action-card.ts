@@ -20,7 +20,7 @@ export type ChatInput = {
   text?: string
   attachments?: ChatAttachment[]
   sessionId: string
-  userId: string
+  // userId intentionally excluded — always derived from verified session in the DAL, never from caller
   date?: string // Optional backdate "YYYY-MM-DD"
 }
 

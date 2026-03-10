@@ -141,9 +141,14 @@ describe('sanitizeFields', () => {
     expect(result.fld_cal).toBeNull()
   })
 
-  it('converts minutes to hours when unit is hrs and value > 24', () => {
+  it('converts minutes to hours when unit is hrs and 24 < value <= 1440', () => {
     const result = sanitizeFields({ fld_sleep: 480 }, schema)
     expect(result.fld_sleep).toBe(8)
+  })
+
+  it('returns null for duration > 1440 minutes (hallucinated value)', () => {
+    const result = sanitizeFields({ fld_sleep: 99999 }, schema)
+    expect(result.fld_sleep).toBeNull()
   })
 
   it('does not convert sleep value when it is <= 24', () => {

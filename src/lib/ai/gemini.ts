@@ -8,6 +8,20 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY environment variable is not set')
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY })
 
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/wav',
+  'audio/flac',
+  'audio/aac',
+  'application/pdf',
+])
+
 type ContentPart =
   | { text: string }
   | { inlineData: { mimeType: string; data: string } }
@@ -21,6 +35,9 @@ function buildParts(input: ChatInput): ContentPart[] {
 
   if (input.attachments) {
     for (const attachment of input.attachments) {
+      if (!ALLOWED_MIME_TYPES.has(attachment.mimeType)) {
+        throw new Error(`Unsupported attachment MIME type: ${attachment.mimeType}`)
+      }
       parts.push({
         inlineData: {
           mimeType: attachment.mimeType,

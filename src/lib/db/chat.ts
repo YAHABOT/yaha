@@ -154,11 +154,13 @@ export async function addMessage(input: CreateMessageInput): Promise<ChatMessage
   if (error) throw new Error(`Failed to add message: ${error.message}`)
 
   // Bump session updated_at after successful message insert
-  await supabase
+  const { error: bumpError } = await supabase
     .from('chat_sessions')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', input.session_id)
     .eq('user_id', user.id)
+
+  if (bumpError) throw new Error(`Failed to update session timestamp: ${bumpError.message}`)
 
   return data as ChatMessage
 }

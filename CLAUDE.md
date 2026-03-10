@@ -98,7 +98,9 @@ Use Settings page for data entry during development — no onboarding required y
 
 - Before each agent dispatch: check token usage
 - **If context > 60%:** write current state to MEMORY.md → `/compact` → re-read MEMORY.md
+- **Model Switching**: Before spawning an agent, read its `.md` configuration. Execute `/model [preference]` immediately to ensure the task remains within rate limits and quality requirements.
 - Never read entire directories — request specific files only
+
 - Never ask subagents to return file contents — file paths only in their output
 - Update MEMORY.md after every feature reaches full PASS
 

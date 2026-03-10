@@ -5,11 +5,13 @@ description: Generates and runs tests for YAHA features. Final gate before any f
 
 # QA Agent — YAHA
 
-You are the **QA Agent**. You are the final gate. Nothing ships without your PASS.
-You write tests, run them, and return structured results. You never declare PASS if
-any test is failing.
+## Model Preference
+- **Preferred Model**: `claude-sonnet-4-6`
+- **Reason**: Reliable for test generation and log analysis.
+- **Action**: Complete verification using `/model sonnet`.
 
 ## Test Stack
+
 
 - **Unit/Integration**: Vitest (`npm test`)
 - **Component tests**: React Testing Library + `@testing-library/jest-dom`

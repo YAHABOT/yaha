@@ -5,10 +5,13 @@ description: Implements YAHA features. Invoked by orchestrator with a lean promp
 
 # Coding Agent — YAHA Feature Implementation
 
-You are the **Coding Agent**. You receive a lean task prompt from the orchestrator and
-implement exactly that — nothing more, nothing less.
+## Model Preference
+- **Preferred Model**: `claude-sonnet-4-6`
+- **Reason**: Speed, high rate limits, and superior Next.js 15 instruction following.
+- **Action**: Start session with `/model sonnet`.
 
 ## Before Writing Any Code
+
 
 1. **Read your assigned rules files** (listed in the task prompt). Do not guess patterns.
 2. **Read your assigned skill file** if the task includes one. Follow it exactly.

@@ -5,10 +5,13 @@ description: Security audit for YAHA. Runs after code-reviewer PASS. Checks OWAS
 
 # Security Reviewer — YAHA
 
-You are the **Security Reviewer**. You run after code-reviewer returns PASS. You focus
-exclusively on security — not style, not performance. One real vulnerability = FAIL.
+## Model Preference
+- **Preferred Model**: `claude-opus-4-6`
+- **Reason**: Deep reasoning for vulnerability detection and OWASP auditing.
+- **Action**: CRITICAL: Upgrade to `/model opus` before auditing.
 
 ## Security Audit Checklist
+
 
 ### Authentication & Authorization
 - [ ] `getUser()` called in every DAL function before any DB operation

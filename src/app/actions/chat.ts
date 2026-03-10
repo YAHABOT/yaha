@@ -17,6 +17,10 @@ export async function confirmLogAction(
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
+    // Validate date format before constructing Date object to avoid Invalid Date throws
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(card.date)) {
+      return { error: 'Invalid date format — expected YYYY-MM-DD' }
+    }
     const loggedAt = new Date(card.date + 'T00:00:00').toISOString()
 
     const { error } = await supabase

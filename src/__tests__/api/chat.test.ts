@@ -11,6 +11,7 @@ const {
   mockGetUser,
   mockCreateServerClient,
   mockCreateSession,
+  mockGetSession,
   mockAddMessage,
   mockGetTrackers,
   mockProcessHealthMessage,
@@ -19,6 +20,7 @@ const {
   mockGetUser: vi.fn(),
   mockCreateServerClient: vi.fn(),
   mockCreateSession: vi.fn(),
+  mockGetSession: vi.fn(),
   mockAddMessage: vi.fn(),
   mockGetTrackers: vi.fn(),
   mockProcessHealthMessage: vi.fn(),
@@ -31,6 +33,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/db/chat', () => ({
   createSession: mockCreateSession,
+  getSession: mockGetSession,
   addMessage: mockAddMessage,
   getMessages: vi.fn(),
   getSessions: vi.fn(),
@@ -110,6 +113,8 @@ beforeEach(() => {
   // Default happy path setup
   setAuthenticatedUser()
   mockCreateSession.mockResolvedValue(FAKE_SESSION)
+  // Return a session with the requested id so session.id matches the caller's sessionId
+  mockGetSession.mockImplementation(async (id: string) => ({ ...FAKE_SESSION, id }))
   mockAddMessage.mockResolvedValue({ id: 'msg-1' })
   mockGetTrackers.mockResolvedValue([])
   mockBuildHealthSystemPrompt.mockReturnValue('You are a health assistant.')
@@ -225,6 +230,16 @@ describe('POST /api/chat — session management', () => {
     expect(mockCreateSession).not.toHaveBeenCalled()
     const body = await res.json() as { sessionId: string }
     expect(body.sessionId).toBe('existing-session')
+  })
+
+  it('returns 404 when provided sessionId does not belong to user', async () => {
+    mockGetSession.mockRejectedValue(new Error('Session not found or unauthorized'))
+
+    const res = await POST(makeRequest({ message: 'Hello', sessionId: 'foreign-session' }))
+
+    expect(res.status).toBe(404)
+    const body = await res.json() as { error: string }
+    expect(body.error).toBe('Session not found')
   })
 })
 

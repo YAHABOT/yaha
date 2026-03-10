@@ -10,6 +10,14 @@ import type { ChatAttachment } from '@/types/action-card'
 const MAX_TEXTAREA_ROWS = 6
 const ACCEPTED_FILE_TYPES = 'image/*,audio/*,application/pdf'
 
+// Client-side allowlist mirrors the server-side set for early UX feedback
+const ALLOWED_MIME_PREFIXES = ['image/', 'audio/']
+const ALLOWED_MIME_EXACT = new Set(['application/pdf'])
+
+function isAllowedMimeType(mimeType: string): boolean {
+  return ALLOWED_MIME_PREFIXES.some((p) => mimeType.startsWith(p)) || ALLOWED_MIME_EXACT.has(mimeType)
+}
+
 type AttachedFile = {
   file: File
   attachment: ChatAttachment
@@ -31,7 +39,7 @@ type Props = {
 
 function buildOptimisticMessage(content: string): ChatMessage {
   return {
-    id: `optimistic-${Date.now()}`,
+    id: `optimistic-${crypto.randomUUID()}`,
     session_id: '',
     role: 'user',
     content,
@@ -42,7 +50,7 @@ function buildOptimisticMessage(content: string): ChatMessage {
 
 function buildModelMessage(response: ChatApiResponse['message'], sessionId: string): ChatMessage {
   return {
-    id: `model-${Date.now()}`,
+    id: `model-${crypto.randomUUID()}`,
     session_id: sessionId,
     role: 'model',
     content: response.content,
@@ -102,6 +110,14 @@ export function ChatInterface({ initialMessages, sessionId }: Props): React.Reac
     async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
       const files = Array.from(e.target.files ?? [])
       if (files.length === 0) return
+
+      // Client-side MIME guard — provides early UX feedback before server rejects
+      const disallowed = files.find((f) => !isAllowedMimeType(f.type))
+      if (disallowed) {
+        setError(`File type not supported: ${disallowed.type}`)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
 
       const converted = await Promise.all(
         files.map(async (file): Promise<AttachedFile> => {

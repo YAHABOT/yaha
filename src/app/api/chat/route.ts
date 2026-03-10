@@ -1,6 +1,5 @@
 import { createServerClient } from '@/lib/supabase/server'
-import { createSession } from '@/lib/db/chat'
-import { addMessage } from '@/lib/db/chat'
+import { createSession, getSession, addMessage } from '@/lib/db/chat'
 import { getTrackers } from '@/lib/db/trackers'
 import { processHealthMessage } from '@/lib/ai/gemini'
 import { buildHealthSystemPrompt } from '@/lib/ai/prompt-builder'
@@ -98,12 +97,18 @@ export async function POST(req: Request): Promise<Response> {
       )
     }
 
-    // Get or create chat session
-    // Note: createSession verifies auth internally — the sessionId from the request body
-    // is NOT used as proof of ownership. The DAL re-verifies the authenticated user.
-    const session = sessionId
-      ? { id: sessionId }
-      : await createSession()
+    // Get or create chat session — if sessionId provided, verify ownership explicitly
+    // (returns 404 rather than leaking a generic 500 for invalid/foreign sessions)
+    let session: { id: string }
+    if (sessionId) {
+      try {
+        session = await getSession(sessionId)
+      } catch {
+        return Response.json({ error: 'Session not found' }, { status: 404 })
+      }
+    } else {
+      session = await createSession()
+    }
 
     // Save user message
     await addMessage({

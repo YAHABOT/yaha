@@ -1,5 +1,7 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { DesktopSidebar } from '@/components/nav/DesktopSidebar'
+import { MobileBottomNav } from '@/components/nav/MobileBottomNav'
 
 export default async function AppLayout({
   children,
@@ -16,14 +18,12 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      {/* Sidebar placeholder — Task 8.1 */}
-      <aside className="hidden w-64 border-r border-border bg-surface md:block">
-        <div className="p-4">
-          <h2 className="text-lg font-bold text-textPrimary">YAHA</h2>
-        </div>
-      </aside>
-      <main className="flex-1 overflow-auto p-6">{children}</main>
+    <div className="min-h-screen bg-background">
+      <DesktopSidebar user={{ email: user.email ?? null }} />
+      <MobileBottomNav />
+      <main className="md:pl-56 pb-16 md:pb-0 p-4 md:p-6 min-h-screen">
+        {children}
+      </main>
     </div>
   )
 }

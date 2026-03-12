@@ -36,7 +36,6 @@ function Sparkline({ trend, color }: { trend: number[]; color: string }): React.
               contentStyle={{ background: '#0A0A0A', border: '1px solid #1E1E1E', fontSize: 11 }}
               itemStyle={{ color: '#F5F5F5' }}
               labelFormatter={() => ''}
-              formatter={(val: number) => [val, '']}
             />
           </LineChart>
         </ResponsiveContainer>

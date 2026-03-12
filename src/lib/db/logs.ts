@@ -142,3 +142,42 @@ export async function deleteLog(id: string): Promise<void> {
 
   if (error) throw new Error(`Failed to delete log: ${error.message}`)
 }
+
+export type TrackerLogSummary = {
+  tracker_id: string
+  count: number
+  last_logged_at: string | null
+}
+
+export async function getTrackerLogSummaries(): Promise<TrackerLogSummary[]> {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  // Use RPC-style aggregate — fetch recent logs per tracker and compute in JS
+  // This avoids needing a custom DB function while staying efficient for typical usage
+  const { data, error } = await supabase
+    .from('tracker_logs')
+    .select('tracker_id, logged_at')
+    .eq('user_id', user.id)
+    .order('logged_at', { ascending: false })
+    .limit(2000)
+
+  if (error) throw new Error(`Failed to fetch log summaries: ${error.message}`)
+
+  const map = new Map<string, { count: number; last_logged_at: string }>()
+  for (const row of data ?? []) {
+    const existing = map.get(row.tracker_id)
+    if (existing) {
+      existing.count += 1
+    } else {
+      map.set(row.tracker_id, { count: 1, last_logged_at: row.logged_at as string })
+    }
+  }
+
+  return Array.from(map.entries()).map(([tracker_id, info]) => ({
+    tracker_id,
+    count: info.count,
+    last_logged_at: info.last_logged_at,
+  }))
+}

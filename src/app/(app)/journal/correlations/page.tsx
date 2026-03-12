@@ -7,9 +7,14 @@ type DeleteButtonProps = {
 }
 
 async function DeleteCorrelationButton({ id }: DeleteButtonProps): Promise<React.ReactElement> {
-  const action = deleteCorrelationAction.bind(null, id)
+  // Inline server action: wraps deleteCorrelationAction and discards the return value
+  // so the form action type satisfies (formData: FormData) => Promise<void>
+  async function handleDelete(): Promise<void> {
+    'use server'
+    await deleteCorrelationAction(id)
+  }
   return (
-    <form action={action}>
+    <form action={handleDelete}>
       <button
         type="submit"
         className="rounded-md px-3 py-1 text-xs font-medium text-red-400 hover:bg-red-400/10 transition-colors"

@@ -23,7 +23,7 @@ export async function createRoutineAction(
     await createRoutine(input)
     revalidatePath('/routines')
     return { success: true }
-  } catch (e) {
+  } catch {
     return { error: 'Failed to create routine' }
   }
 }
@@ -52,7 +52,7 @@ export async function updateRoutineAction(
     await updateRoutine(id, input)
     revalidatePath('/routines')
     return { success: true }
-  } catch (e) {
+  } catch {
     return { error: 'Failed to update routine' }
   }
 }
@@ -64,7 +64,7 @@ export async function deleteRoutineAction(
     await deleteRoutine(id)
     revalidatePath('/routines')
     return { success: true }
-  } catch (e) {
+  } catch {
     return { error: 'Failed to delete routine' }
   }
 }

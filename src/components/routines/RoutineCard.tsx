@@ -13,8 +13,15 @@ type Props = {
   routine: Routine
 }
 
-export function RoutineCard({ routine }: Props) {
+// async Server Component: required to define inline server action with closure over routine.id
+export async function RoutineCard({ routine }: Props): Promise<React.ReactElement> {
   const stepCount = routine.steps.length
+
+  // Inline server action: wraps deleteRoutineAction so form action type is Promise<void>
+  async function handleDelete(): Promise<void> {
+    'use server'
+    await deleteRoutineAction(routine.id)
+  }
 
   return (
     <div className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-white/10">
@@ -43,7 +50,7 @@ export function RoutineCard({ routine }: Props) {
           <Pencil className="h-3.5 w-3.5" />
           Edit
         </Link>
-        <form action={deleteRoutineAction.bind(null, routine.id)}>
+        <form action={handleDelete}>
           <button
             type="submit"
             className="min-h-[44px] rounded-lg bg-surfaceHighlight px-3 py-2.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10"

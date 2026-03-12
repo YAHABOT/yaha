@@ -16,6 +16,8 @@ const {
   mockGetTrackers,
   mockProcessHealthMessage,
   mockBuildHealthSystemPrompt,
+  mockBuildRoutineSystemPrompt,
+  mockDetectRoutineTrigger,
 } = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
   mockCreateServerClient: vi.fn(),
@@ -25,6 +27,8 @@ const {
   mockGetTrackers: vi.fn(),
   mockProcessHealthMessage: vi.fn(),
   mockBuildHealthSystemPrompt: vi.fn(),
+  mockBuildRoutineSystemPrompt: vi.fn(),
+  mockDetectRoutineTrigger: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -53,6 +57,11 @@ vi.mock('@/lib/ai/gemini', () => ({
 
 vi.mock('@/lib/ai/prompt-builder', () => ({
   buildHealthSystemPrompt: mockBuildHealthSystemPrompt,
+  buildRoutineSystemPrompt: mockBuildRoutineSystemPrompt,
+}))
+
+vi.mock('@/lib/routines/detector', () => ({
+  detectRoutineTrigger: mockDetectRoutineTrigger,
 }))
 
 // ---------------------------------------------------------------------------
@@ -118,6 +127,8 @@ beforeEach(() => {
   mockAddMessage.mockResolvedValue({ id: 'msg-1' })
   mockGetTrackers.mockResolvedValue([])
   mockBuildHealthSystemPrompt.mockReturnValue('You are a health assistant.')
+  mockBuildRoutineSystemPrompt.mockReturnValue('You are YAHA executing a routine.')
+  mockDetectRoutineTrigger.mockResolvedValue(null)
   mockProcessHealthMessage.mockResolvedValue({ text: 'Logged your meal!', actions: [] })
 })
 
@@ -382,5 +393,68 @@ describe('POST /api/chat — error handling', () => {
 
     const body = await res.json() as { error: string }
     expect(body.error).not.toContain('Secret internal details')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Routine trigger detection
+// ---------------------------------------------------------------------------
+
+import type { Routine } from '@/types/routine'
+
+const FAKE_ROUTINE: Routine = {
+  id: 'routine-1',
+  user_id: 'user-123',
+  name: 'Morning Check-In',
+  trigger_phrase: 'start day',
+  type: 'day_start',
+  steps: [
+    {
+      trackerId: 'tracker-sleep',
+      trackerName: 'Sleep',
+      trackerColor: '#3b82f6',
+      targetFields: ['fld_hours', 'fld_quality'],
+    },
+  ],
+  created_at: '2026-03-11T00:00:00Z',
+}
+
+describe('POST /api/chat — routine trigger detection', () => {
+  it('uses routine system prompt when detectRoutineTrigger returns a routine', async () => {
+    mockDetectRoutineTrigger.mockResolvedValue(FAKE_ROUTINE)
+
+    const res = await POST(makeRequest({ message: 'start day' }))
+
+    expect(res.status).toBe(200)
+    expect(mockBuildRoutineSystemPrompt).toHaveBeenCalledWith(FAKE_ROUTINE)
+    expect(mockBuildHealthSystemPrompt).not.toHaveBeenCalled()
+    expect(mockProcessHealthMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      'You are YAHA executing a routine.'
+    )
+  })
+
+  it('uses default health system prompt when no routine is triggered', async () => {
+    mockDetectRoutineTrigger.mockResolvedValue(null)
+
+    const res = await POST(makeRequest({ message: 'I slept 8 hours' }))
+
+    expect(res.status).toBe(200)
+    expect(mockBuildHealthSystemPrompt).toHaveBeenCalledOnce()
+    expect(mockBuildRoutineSystemPrompt).not.toHaveBeenCalled()
+    expect(mockProcessHealthMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      'You are a health assistant.'
+    )
+  })
+
+  it('falls back to default system prompt when detectRoutineTrigger throws', async () => {
+    mockDetectRoutineTrigger.mockRejectedValue(new Error('Auth error'))
+
+    const res = await POST(makeRequest({ message: 'start day' }))
+
+    expect(res.status).toBe(200)
+    expect(mockBuildHealthSystemPrompt).toHaveBeenCalledOnce()
+    expect(mockBuildRoutineSystemPrompt).not.toHaveBeenCalled()
   })
 })

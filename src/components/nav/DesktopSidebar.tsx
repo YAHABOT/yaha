@@ -1,3 +1,5 @@
+'use client' // needed: passes icon components (functions) to NavLink — must stay in client tree
+
 import {
   LayoutDashboard,
   BookOpen,
@@ -18,7 +20,7 @@ type Props = {
 const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/journal', icon: BookOpen, label: 'Journals' },
-  { href: '/journal', icon: TrendingUp, label: 'Analytics' },
+  { href: '/analytics', icon: TrendingUp, label: 'Analytics' },
   { href: '/trackers', icon: Boxes, label: 'Trackers' },
   { href: '/routines', icon: Workflow, label: 'Routines' },
   { href: '/chat', icon: MessageCircle, label: 'Chat' },

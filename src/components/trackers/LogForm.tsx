@@ -106,7 +106,7 @@ export function LogForm({ tracker }: Props): React.ReactElement {
         </p>
         <Link
           href={`/trackers/${tracker.id}/schema`}
-          className="inline-block rounded-lg bg-surfaceHighlight px-4 py-2 text-sm font-medium text-textPrimary transition-colors hover:bg-white/10"
+          className="inline-block rounded-lg bg-surfaceHighlight px-4 py-2 text-sm font-medium text-textPrimary transition-colors hover:bg-black/[0.06]"
         >
           Edit Schema
         </Link>
@@ -150,14 +150,14 @@ export function LogForm({ tracker }: Props): React.ReactElement {
           type="datetime-local"
           value={loggedAt}
           onChange={(e) => setLoggedAt(e.target.value)}
-          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
 
       <button
         type="submit"
         disabled={submitting}
-        className="w-full rounded-lg bg-nutrition px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-nutrition/90 disabled:opacity-50"
+        className="w-full rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
       >
         {submitting ? 'Saving...' : 'Log Entry'}
       </button>
@@ -195,7 +195,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps): React.ReactEle
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={`Enter ${field.label.toLowerCase()}`}
-          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
       )}
 
@@ -206,7 +206,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps): React.ReactEle
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={`Enter ${field.label.toLowerCase()}`}
-          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
       )}
 
@@ -233,7 +233,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps): React.ReactEle
           type="time"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
       )}
     </div>

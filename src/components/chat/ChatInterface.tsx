@@ -315,7 +315,7 @@ export function ChatInterface({ initialMessages, sessionId }: Props): React.Reac
             onKeyDown={handleKeyDown}
             placeholder="Message YAHA... (Enter to send, Shift+Enter for newline)"
             rows={1}
-            className="flex-1 resize-none rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-textPrimary placeholder-textMuted/50 focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+            className="flex-1 resize-none rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-textPrimary placeholder-textMuted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             data-testid="message-input"
             aria-label="Message input"
           />
@@ -324,7 +324,7 @@ export function ChatInterface({ initialMessages, sessionId }: Props): React.Reac
           <button
             type="submit"
             disabled={isLoading || (!input.trim() && attachedFiles.length === 0)}
-            className="flex-shrink-0 rounded-lg bg-nutrition p-2 text-white transition-colors hover:bg-nutrition/90 disabled:opacity-50"
+            className="flex-shrink-0 rounded-lg bg-primary p-2 text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
             aria-label="Send message"
             data-testid="send-button"
           >

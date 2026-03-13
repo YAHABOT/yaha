@@ -3,7 +3,6 @@
 @tailwind utilities;
 
 body {
-  background: #050505;
-  color: #F5F5F5;
-  font-family: system-ui, -apple-system, sans-serif;
+  background: #F5F5F5;
+  color: #0A0A0A;
 }

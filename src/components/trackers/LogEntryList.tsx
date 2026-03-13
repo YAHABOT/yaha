@@ -165,7 +165,7 @@ export function LogEntryList({ logs, schema, trackerId }: Props): React.ReactEle
                       type="button"
                       onClick={cancelEdit}
                       disabled={saving}
-                      className="rounded-md p-1.5 text-textMuted transition-colors hover:bg-white/5 disabled:opacity-50"
+                      className="rounded-md p-1.5 text-textMuted transition-colors hover:bg-black/[0.04] disabled:opacity-50"
                       aria-label="Cancel edit"
                     >
                       <X className="h-4 w-4" />
@@ -176,7 +176,7 @@ export function LogEntryList({ logs, schema, trackerId }: Props): React.ReactEle
                     <button
                       type="button"
                       onClick={() => startEdit(log)}
-                      className="rounded-md p-1.5 text-textMuted transition-colors hover:bg-white/5 hover:text-textPrimary"
+                      className="rounded-md p-1.5 text-textMuted transition-colors hover:bg-black/[0.04] hover:text-textPrimary"
                       aria-label="Edit entry"
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -195,7 +195,7 @@ export function LogEntryList({ logs, schema, trackerId }: Props): React.ReactEle
                           type="button"
                           onClick={() => setDeletingId(null)}
                           disabled={saving}
-                          className="rounded-md px-2 py-1 text-xs font-medium text-textMuted transition-colors hover:bg-white/5"
+                          className="rounded-md px-2 py-1 text-xs font-medium text-textMuted transition-colors hover:bg-black/[0.04]"
                         >
                           Cancel
                         </button>
@@ -267,7 +267,7 @@ function EditFieldInput({ field, value, onChange }: EditFieldInputProps): React.
   const inputId = `edit-${field.fieldId}`
   const fieldType = getFieldType([field], field.fieldId)
   const inputClasses =
-    'w-full rounded-md border border-border bg-background px-2 py-1 text-sm text-textPrimary focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition'
+    'w-full rounded-md border border-border bg-background px-2 py-1 text-sm text-textPrimary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
 
   return (
     <div>

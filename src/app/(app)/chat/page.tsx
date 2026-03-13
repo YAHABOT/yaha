@@ -23,7 +23,7 @@ export default async function ChatPage(): Promise<React.ReactElement> {
             </div>
             <Link
               href="/chat/new"
-              className="flex items-center gap-1.5 rounded-lg bg-nutrition px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-nutrition/90"
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
             >
               <Plus className="h-4 w-4" />
               New Chat
@@ -35,7 +35,7 @@ export default async function ChatPage(): Promise<React.ReactElement> {
             <p className="text-sm text-textMuted">Select a conversation or start a new one.</p>
             <Link
               href="/chat/new"
-              className="flex items-center gap-1.5 rounded-lg bg-nutrition px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-nutrition/90"
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
             >
               <Plus className="h-4 w-4" />
               New Chat

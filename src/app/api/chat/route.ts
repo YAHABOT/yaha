@@ -2,7 +2,8 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createSession, getSession, addMessage } from '@/lib/db/chat'
 import { getTrackers } from '@/lib/db/trackers'
 import { processHealthMessage } from '@/lib/ai/gemini'
-import { buildHealthSystemPrompt } from '@/lib/ai/prompt-builder'
+import { buildHealthSystemPrompt, buildRoutineSystemPrompt } from '@/lib/ai/prompt-builder'
+import { detectRoutineTrigger } from '@/lib/routines/detector'
 import type { ChatAttachment, ChatInput, ActionCard } from '@/types/action-card'
 
 const MAX_MESSAGE_LENGTH = 4000
@@ -99,8 +100,9 @@ export async function POST(req: Request): Promise<Response> {
 
     // Get or create chat session — if sessionId provided, verify ownership explicitly
     // (returns 404 rather than leaking a generic 500 for invalid/foreign sessions)
+    // "new" is a UI sentinel meaning "no session yet" — treat it like no sessionId
     let session: { id: string }
-    if (sessionId) {
+    if (sessionId && sessionId !== 'new') {
       try {
         session = await getSession(sessionId)
       } catch {
@@ -120,8 +122,17 @@ export async function POST(req: Request): Promise<Response> {
     // Fetch trackers for system prompt context
     const trackers = await getTrackers()
 
-    // Build system prompt with tracker context
-    const systemPrompt = buildHealthSystemPrompt({ trackers, date })
+    // Check if user message matches a routine trigger phrase.
+    // If detectRoutineTrigger throws (e.g. auth error, no routines), fall back gracefully.
+    let systemPrompt: string
+    try {
+      const routine = await detectRoutineTrigger(message)
+      systemPrompt = routine
+        ? buildRoutineSystemPrompt(routine)
+        : buildHealthSystemPrompt({ trackers, date })
+    } catch {
+      systemPrompt = buildHealthSystemPrompt({ trackers, date })
+    }
 
     // Build ChatInput (userId intentionally omitted — derived from session in DAL)
     const chatInput: ChatInput = {

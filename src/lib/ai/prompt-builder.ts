@@ -1,4 +1,5 @@
 import type { Tracker } from '@/types/tracker'
+import type { Routine } from '@/types/routine'
 
 type BuildHealthSystemPromptParams = {
   trackers: Tracker[]
@@ -72,4 +73,28 @@ When the user mentions loggable data, append a fenced JSON block with an array o
 \`\`\`
 
 Only include fields that were explicitly mentioned. Omit fields with no value.`
+}
+
+export function buildRoutineSystemPrompt(routine: Routine): string {
+  const stepLines = routine.steps
+    .map(
+      (step, i) =>
+        `Step ${i + 1}: Log ${step.trackerName} — fields: ${step.targetFields.join(', ')}`
+    )
+    .join('\n')
+
+  return `You are YAHA, a health tracking assistant executing a routine called "${routine.name}".
+
+The user has triggered this routine with: "${routine.trigger_phrase}"
+
+Guide them step by step through the following sequence:
+${stepLines}
+
+For each step:
+1. Ask the user for the specific field values
+2. When they provide values, confirm what you understood
+3. Generate an ActionCard JSON for that step's tracker
+4. Move to the next step only after the user confirms
+
+Start by greeting the user and beginning Step 1 immediately.`
 }

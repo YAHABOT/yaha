@@ -112,7 +112,7 @@ export function SchemaEditor({ tracker }: Props): React.ReactElement {
             type="button"
             onClick={handleAddField}
             disabled={schema.length >= MAX_SCHEMA_FIELDS}
-            className="flex items-center gap-1 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-xs font-medium text-textPrimary transition-colors hover:bg-white/10 disabled:opacity-40"
+            className="flex items-center gap-1 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-xs font-medium text-textPrimary transition-colors hover:bg-black/[0.06] disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" />
             Add Field
@@ -144,14 +144,14 @@ export function SchemaEditor({ tracker }: Props): React.ReactElement {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="rounded-lg bg-nutrition px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-nutrition/90 disabled:opacity-50"
+            className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Save Schema'}
           </button>
           <button
             type="button"
             onClick={() => router.push('/trackers')}
-            className="rounded-lg bg-surfaceHighlight px-6 py-2.5 text-sm font-medium text-textMuted transition-colors hover:bg-white/10 hover:text-textPrimary"
+            className="rounded-lg bg-surfaceHighlight px-6 py-2.5 text-sm font-medium text-textMuted transition-colors hover:bg-black/[0.06] hover:text-textPrimary"
           >
             Cancel
           </button>
@@ -172,7 +172,7 @@ export function SchemaEditor({ tracker }: Props): React.ReactElement {
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(false)}
-              className="rounded-lg bg-surfaceHighlight px-4 py-2 text-sm font-medium text-textMuted transition-colors hover:bg-white/10"
+              className="rounded-lg bg-surfaceHighlight px-4 py-2 text-sm font-medium text-textMuted transition-colors hover:bg-black/[0.06]"
             >
               No
             </button>

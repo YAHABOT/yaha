@@ -24,7 +24,7 @@ export async function RoutineCard({ routine }: Props): Promise<React.ReactElemen
   }
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-white/10">
+    <div className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-black/10">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <h3 className="text-base font-semibold text-textPrimary">{routine.name}</h3>
         <span className="rounded-md bg-surfaceHighlight px-2 py-0.5 text-xs font-medium text-textMuted">
@@ -45,7 +45,7 @@ export async function RoutineCard({ routine }: Props): Promise<React.ReactElemen
       <div className="flex flex-wrap items-center gap-3">
         <Link
           href={`/routines/${routine.id}/edit`}
-          className="flex min-h-[44px] items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-2.5 text-xs font-medium text-textPrimary transition-colors hover:bg-white/10"
+          className="flex min-h-[44px] items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-2.5 text-xs font-medium text-textPrimary transition-colors hover:bg-black/[0.06]"
         >
           <Pencil className="h-3.5 w-3.5" />
           Edit

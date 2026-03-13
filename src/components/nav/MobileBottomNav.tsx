@@ -29,7 +29,7 @@ export function MobileBottomNav(): React.ReactElement {
   const pathname = usePathname()
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface border-t border-border pb-[env(safe-area-inset-bottom)]">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sidebar border-t border-sidebar-border pb-[env(safe-area-inset-bottom)]">
       <div className="flex items-stretch">
         {TABS.map((tab) => {
           const isActive = pathname === tab.href || pathname.startsWith(tab.href + '/')
@@ -40,7 +40,7 @@ export function MobileBottomNav(): React.ReactElement {
               key={tab.href}
               href={tab.href}
               className={`flex-1 flex flex-col items-center py-2 gap-0.5 transition-colors ${
-                isActive ? 'text-nutrition' : 'text-textMuted'
+                isActive ? 'text-primary' : 'text-sidebar-muted'
               }`}
             >
               <Icon className={tab.primary ? 'w-6 h-6' : 'w-5 h-5'} />

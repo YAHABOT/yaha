@@ -43,15 +43,20 @@ export function DesktopSidebar({ user }: Props): React.ReactElement {
   const displayName = getDisplayName(user.email)
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 h-screen w-56 flex-col bg-surface border-r border-border z-40">
+    <aside className="hidden md:flex fixed left-0 top-0 h-screen w-56 flex-col bg-sidebar border-r border-sidebar-border z-40">
+      {/* Brand */}
+      <div className="flex items-center gap-2 px-5 py-5 border-b border-sidebar-border">
+        <span className="text-xl font-bold text-primary tracking-tight">YAHA</span>
+      </div>
+
       {/* Profile card */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-border">
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+      <div className="flex items-center gap-3 px-4 py-4 border-b border-sidebar-border">
+        <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm shrink-0">
           {initial}
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-bold text-textPrimary truncate">{displayName}</p>
-          <p className="text-xs text-textMuted truncate">{user.email ?? ''}</p>
+          <p className="text-sm font-semibold text-sidebar-text truncate">{displayName}</p>
+          <p className="text-xs text-sidebar-muted truncate">{user.email ?? ''}</p>
         </div>
       </div>
 
@@ -67,13 +72,12 @@ export function DesktopSidebar({ user }: Props): React.ReactElement {
         ))}
       </nav>
 
-      {/* Bottom: email + sign out */}
-      <div className="px-3 py-4 border-t border-border space-y-2">
-        <p className="px-3 text-xs text-textMuted truncate">{user.email ?? ''}</p>
+      {/* Bottom: sign out */}
+      <div className="px-3 py-4 border-t border-sidebar-border">
         <form action={signOut}>
           <button
             type="submit"
-            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-textMuted hover:text-textPrimary hover:bg-surfaceHighlight/50 transition-colors"
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-border transition-colors"
           >
             <LogOut className="w-4 h-4 shrink-0" />
             <span>Sign out</span>

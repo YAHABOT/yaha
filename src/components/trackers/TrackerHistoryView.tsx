@@ -92,14 +92,14 @@ export function TrackerHistoryView({ tracker, logs }: Props): React.ReactElement
           <div className="flex items-center gap-2">
             <Link
               href={`/trackers/${tracker.id}/log`}
-              className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-sm font-medium text-textPrimary transition-colors hover:bg-white/10"
+              className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-sm font-medium text-textPrimary transition-colors hover:bg-black/[0.06]"
             >
               <ClipboardList className="h-4 w-4" />
               Log
             </Link>
             <Link
               href={`/trackers/${tracker.id}/schema`}
-              className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-sm font-medium text-textMuted transition-colors hover:bg-white/10"
+              className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-sm font-medium text-textMuted transition-colors hover:bg-black/[0.06]"
             >
               <Pencil className="h-3.5 w-3.5" />
               Schema

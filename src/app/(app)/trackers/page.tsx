@@ -12,7 +12,7 @@ export default async function TrackersPage(): Promise<React.ReactElement> {
         <h1 className="text-2xl font-bold text-textPrimary">Trackers</h1>
         <Link
           href="/trackers/new"
-          className="flex items-center gap-1.5 rounded-lg bg-nutrition px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-nutrition/90"
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
         >
           <Plus className="h-4 w-4" />
           New Tracker

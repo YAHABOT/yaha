@@ -129,7 +129,7 @@ export function RoutineForm({ trackers, initialValues, onSubmit }: Props) {
           required
           maxLength={MAX_NAME_LENGTH}
           placeholder="e.g. Morning Check-In"
-          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
 
@@ -146,7 +146,7 @@ export function RoutineForm({ trackers, initialValues, onSubmit }: Props) {
           required
           maxLength={MAX_TRIGGER_LENGTH}
           placeholder="e.g. start day, morning"
-          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary placeholder-textMuted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <p className="mt-1 text-xs text-textMuted">
           Detected in chat messages to start this routine automatically.
@@ -162,7 +162,7 @@ export function RoutineForm({ trackers, initialValues, onSubmit }: Props) {
           id="routine-type"
           value={type}
           onChange={(e) => setType(e.target.value as RoutineType)}
-          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+          className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-textPrimary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         >
           {TYPE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -182,7 +182,7 @@ export function RoutineForm({ trackers, initialValues, onSubmit }: Props) {
             type="button"
             onClick={() => setShowTrackerPicker((v) => !v)}
             disabled={trackers.length === 0}
-            className="flex items-center gap-1 rounded-lg bg-surfaceHighlight px-3 py-2.5 text-xs font-medium text-textPrimary transition-colors hover:bg-white/10 disabled:opacity-40"
+            className="flex items-center gap-1 rounded-lg bg-surfaceHighlight px-3 py-2.5 text-xs font-medium text-textPrimary transition-colors hover:bg-black/[0.06] disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" />
             Add Step
@@ -201,7 +201,7 @@ export function RoutineForm({ trackers, initialValues, onSubmit }: Props) {
                     <button
                       type="button"
                       onClick={() => handleAddStep(tracker.id)}
-                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm text-textPrimary transition-colors hover:bg-white/5"
+                      className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm text-textPrimary transition-colors hover:bg-black/[0.04]"
                     >
                       <span
                         className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
@@ -269,7 +269,7 @@ export function RoutineForm({ trackers, initialValues, onSubmit }: Props) {
                           <label
                             key={field.fieldId}
                             htmlFor={checkboxId}
-                            className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-white/5"
+                            className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-black/[0.04]"
                           >
                             <input
                               id={checkboxId}
@@ -299,14 +299,14 @@ export function RoutineForm({ trackers, initialValues, onSubmit }: Props) {
         <button
           type="submit"
           disabled={submitting}
-          className="min-h-[44px] rounded-lg bg-nutrition px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-nutrition/90 disabled:opacity-50"
+          className="min-h-[44px] rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
         >
           {submitting ? (isEdit ? 'Saving...' : 'Creating...') : isEdit ? 'Save Changes' : 'Create Routine'}
         </button>
         <button
           type="button"
           onClick={() => router.push('/routines')}
-          className="min-h-[44px] rounded-lg bg-surfaceHighlight px-6 py-2.5 text-sm font-medium text-textMuted transition-colors hover:bg-white/10 hover:text-textPrimary"
+          className="min-h-[44px] rounded-lg bg-surfaceHighlight px-6 py-2.5 text-sm font-medium text-textMuted transition-colors hover:bg-black/[0.06] hover:text-textPrimary"
         >
           Cancel
         </button>

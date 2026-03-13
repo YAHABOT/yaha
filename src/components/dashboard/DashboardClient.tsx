@@ -60,7 +60,7 @@ export function DashboardClient({
             <button
               type="button"
               onClick={() => setEditMode(prev => !prev)}
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-textMuted transition-colors hover:border-white/20 hover:text-textPrimary"
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-textMuted transition-colors hover:border-black/10 hover:text-textPrimary"
             >
               {editMode ? (
                 <>
@@ -79,7 +79,7 @@ export function DashboardClient({
             <button
               type="button"
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-xs font-medium text-textPrimary transition-colors hover:bg-white/10"
+              className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-xs font-medium text-textPrimary transition-colors hover:bg-black/[0.06]"
             >
               <Plus className="h-3.5 w-3.5" />
               Add Widget
@@ -97,7 +97,7 @@ export function DashboardClient({
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 rounded-xl bg-surfaceHighlight px-4 py-2.5 text-sm font-medium text-textPrimary transition-colors hover:bg-white/10"
+            className="flex items-center gap-2 rounded-xl bg-surfaceHighlight px-4 py-2.5 text-sm font-medium text-textPrimary transition-colors hover:bg-black/[0.06]"
           >
             <Plus className="h-4 w-4" />
             Add Widget

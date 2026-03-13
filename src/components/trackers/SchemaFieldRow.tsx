@@ -36,13 +36,13 @@ export function SchemaFieldRow({ field, onChange, onRemove }: Props): React.Reac
         value={field.label}
         onChange={(e) => handleLabelChange(e.target.value)}
         placeholder="Field label"
-        className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-textPrimary placeholder-textMuted/50 focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+        className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-textPrimary placeholder-textMuted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         aria-label="Field label"
       />
       <select
         value={field.type}
         onChange={(e) => handleTypeChange(e.target.value)}
-        className="w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-textPrimary focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+        className="w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-textPrimary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         aria-label="Field type"
       >
         {FIELD_TYPE_OPTIONS.map((opt) => (
@@ -56,7 +56,7 @@ export function SchemaFieldRow({ field, onChange, onRemove }: Props): React.Reac
         value={field.unit ?? ''}
         onChange={(e) => handleUnitChange(e.target.value)}
         placeholder="Unit"
-        className="w-24 rounded-lg border border-border bg-background px-3 py-2 text-sm text-textPrimary placeholder-textMuted/50 focus:border-nutrition focus:outline-none focus:ring-1 focus:ring-nutrition"
+        className="w-24 rounded-lg border border-border bg-background px-3 py-2 text-sm text-textPrimary placeholder-textMuted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         aria-label="Field unit"
       />
       <button

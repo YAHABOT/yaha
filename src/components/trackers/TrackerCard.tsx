@@ -10,7 +10,7 @@ export function TrackerCard({ tracker }: Props): React.ReactElement {
   const fieldCount = tracker.schema.length
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-white/10">
+    <div className="rounded-xl border border-border bg-surface p-4 transition-colors hover:border-black/10">
       <div className="mb-3 flex items-center gap-2">
         <span
           className="inline-block h-3 w-3 rounded-full"
@@ -34,14 +34,14 @@ export function TrackerCard({ tracker }: Props): React.ReactElement {
       <div className="flex items-center gap-3">
         <Link
           href={`/trackers/${tracker.id}/log`}
-          className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-xs font-medium text-textPrimary transition-colors hover:bg-white/10"
+          className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-xs font-medium text-textPrimary transition-colors hover:bg-black/[0.06]"
         >
           <ClipboardList className="h-3.5 w-3.5" />
           Log
         </Link>
         <Link
           href={`/trackers/${tracker.id}/schema`}
-          className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-xs font-medium text-textPrimary transition-colors hover:bg-white/10"
+          className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-xs font-medium text-textPrimary transition-colors hover:bg-black/[0.06]"
         >
           <Pencil className="h-3.5 w-3.5" />
           Edit Schema

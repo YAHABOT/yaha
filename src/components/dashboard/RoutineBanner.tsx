@@ -24,7 +24,7 @@ export function RoutineBanner({ routine, type }: Props): React.ReactElement {
         </div>
         <Link
           href={`/chat?routine=${routine.id}`}
-          className="block w-full rounded-xl bg-nutrition py-3 text-center text-sm font-bold uppercase tracking-widest text-[#050505]"
+          className="block w-full rounded-xl bg-primary py-3 text-center text-sm font-bold uppercase tracking-widest text-primary-foreground"
         >
           START DAY
         </Link>

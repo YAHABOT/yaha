@@ -33,7 +33,7 @@ function TrackerRow({ tracker, summary }: TrackerRowProps): React.ReactElement {
   return (
     <Link
       href={`/trackers/${tracker.id}`}
-      className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:border-white/10"
+      className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:border-black/10"
     >
       <div className="flex items-center gap-3">
         <span

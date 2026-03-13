@@ -18,8 +18,8 @@ export function NavLink({ href, icon: Icon, label }: Props): React.ReactElement 
       href={href}
       className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
         isActive
-          ? 'bg-surfaceHighlight border-l-2 border-nutrition text-textPrimary pl-[10px]'
-          : 'text-textMuted hover:text-textPrimary hover:bg-surfaceHighlight/50'
+          ? 'bg-sidebar-border border-l-2 border-primary text-sidebar-text pl-[10px]'
+          : 'text-sidebar-muted hover:text-sidebar-text hover:bg-sidebar-border/60'
       }`}
     >
       <Icon className="w-4 h-4 shrink-0" />

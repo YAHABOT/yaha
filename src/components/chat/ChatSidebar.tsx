@@ -34,7 +34,7 @@ function truncateTitle(title: string): string {
 
 export function ChatSidebar({ sessions, currentSessionId }: Props): React.ReactElement {
   return (
-    <aside className="flex h-full w-64 flex-col border-r border-border bg-surface">
+    <aside className="hidden md:flex h-full w-64 flex-col border-r border-border bg-surface">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border p-4">
         <h2 className="text-sm font-semibold text-textPrimary">Conversations</h2>

@@ -18,10 +18,12 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-dvh overflow-hidden bg-background">
       <DesktopSidebar user={{ email: user.email ?? null }} />
       <MobileBottomNav />
-      <main className="md:pl-56 pb-16 md:pb-0 p-4 md:p-6 min-h-screen">
+      {/* No padding here — (content)/layout.tsx adds padding for regular pages.
+          Chat pages use flex h-full and manage their own scroll internally. */}
+      <main className="md:pl-56 pb-16 md:pb-0 h-full overflow-hidden">
         {children}
       </main>
     </div>

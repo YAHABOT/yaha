@@ -100,8 +100,9 @@ export async function POST(req: Request): Promise<Response> {
 
     // Get or create chat session — if sessionId provided, verify ownership explicitly
     // (returns 404 rather than leaking a generic 500 for invalid/foreign sessions)
+    // "new" is a UI sentinel meaning "no session yet" — treat it like no sessionId
     let session: { id: string }
-    if (sessionId) {
+    if (sessionId && sessionId !== 'new') {
       try {
         session = await getSession(sessionId)
       } catch {

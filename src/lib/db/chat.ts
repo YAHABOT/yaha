@@ -3,6 +3,8 @@ import type { ChatSession, ChatMessage, CreateSessionInput, CreateMessageInput }
 
 const DEFAULT_SESSION_TITLE = 'New Chat'
 const DEFAULT_AI_CONTEXT_LIMIT = 20
+const SESSIONS_SIDEBAR_LIMIT = 30
+const MESSAGES_DISPLAY_LIMIT = 100
 
 const SESSION_COLUMNS = 'id, user_id, title, active_routine_id, current_step_index, active_agent_id, updated_at'
 const MESSAGE_COLUMNS = 'id, session_id, role, content, actions, created_at'
@@ -17,6 +19,7 @@ export async function getSessions(): Promise<ChatSession[]> {
     .select(SESSION_COLUMNS)
     .eq('user_id', user.id)
     .order('updated_at', { ascending: false })
+    .limit(SESSIONS_SIDEBAR_LIMIT)
 
   if (error) throw new Error(`Failed to fetch sessions: ${error.message}`)
   return data as ChatSession[]
@@ -119,10 +122,12 @@ export async function getMessages(sessionId: string): Promise<ChatMessage[]> {
     .from('chat_messages')
     .select(MESSAGE_COLUMNS)
     .eq('session_id', sessionId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
+    .limit(MESSAGES_DISPLAY_LIMIT)
 
   if (error) throw new Error(`Failed to fetch messages: ${error.message}`)
-  return data as ChatMessage[]
+  // Reverse to restore chronological order for display
+  return (data as ChatMessage[]).reverse()
 }
 
 export async function addMessage(input: CreateMessageInput): Promise<ChatMessage> {

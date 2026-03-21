@@ -169,7 +169,7 @@ ${summary}
 4. **Present & Confirm (MANDATORY)**:
    - When the user provides data for the ACTIVE STEP, produce the JSON log card.
    - After the card, write ONE short sentence acknowledging the data (e.g., "Got it — Sleep logged!").
-   - ${nextStep ? `Then IMMEDIATELY, in the same response, transition to Step ${currentStepIndex + 2}: "${nextStep.trackerName}" — ask for the fields: ${getFieldsInfo(nextStep)}. Do NOT wait for user confirmation between steps.` : 'This is the FINAL step. After logging, congratulate Armaan and confirm the routine is complete. Do not ask for any more data.'}
+   - ${nextStep ? `Let Armaan know the card is ready to confirm, and that Step ${currentStepIndex + 2} (${nextStep.trackerName}) will follow once he confirms. Do NOT ask for Step ${currentStepIndex + 2} data yet — wait for him to confirm the card above first.` : 'This is the FINAL step. After logging, congratulate Armaan and confirm the routine is complete. Do not ask for any more data.'}
 5. **Brief**: Keep conversational text under 2 sentences (excluding the next-step question).
 
 ## DATA FORMAT

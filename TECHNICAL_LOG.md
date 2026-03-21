@@ -1,154 +1,110 @@
-# TECHNICAL_LOG — 2026-03-20/21 Sprint
+# TECHNICAL_LOG — 2026-03-21 Session
 
-Documents every architectural decision, file change, and logic refactor made during this polishing sprint.
-
----
-
-## Priority #1 — Routine Auto-Advance Friction
-
-**Problem**: During multi-step routines (e.g., Morning Check-in), the AI asked the user to explicitly type "next" before moving to the next step.
-
-**Root Cause**: `buildRoutineSystemPrompt` in `prompt-builder.ts` had two explicit guards:
-- `"Confirm the card above, then say **next** when you're ready for Step X"`
-- `"Do NOT ask for Step X+1 data in this response. Wait for the user to confirm first."`
-
-The backend (`route.ts`) **already** advances `current_step_index` server-side as soon as an action card is produced for the current step's tracker — the waiting instruction was purely a prompt-level constraint.
-
-**Fix**: Modified FLOW RULES step 4 in `buildRoutineSystemPrompt`:
-
-```
-// Before
-- Tell the user to say "next" before step N+1.
-- Do NOT ask for step N+1 data. Wait for user confirmation.
-
-// After
-- Then IMMEDIATELY, in the same response, transition to Step N+1 — ask for its fields.
-  Do NOT wait for user confirmation between steps.
-```
-
-**File**: `src/lib/ai/prompt-builder.ts`
+## Mission
+Fix three regressions: Routine Flow (premature Step 2 prompt), Edit functionality, Navigation Latency.
 
 ---
 
-## Priority #2 — Global Units Missing in History & Journal
+## Fix #1 — Routine Execution: Premature Step 2 Request
 
-**Problem**: Fields with units (kg, kcal, g, etc.) displayed as bare numbers ("65") in Tracker History and Journal Day view. Units only appeared in Chat Action Cards.
+**File**: `src/lib/ai/prompt-builder.ts` — `buildRoutineSystemPrompt`, line 172
 
-**Root Cause**: In `src/lib/utils/format.ts`, the generic numeric formatter returned `String(rounded)` without appending the unit — the unit parameter was received but silently dropped.
+**Root Cause**: The previous session changed FLOW RULE 4c to instruct the AI to
+"IMMEDIATELY, in the same response, transition to Step N+1 and ask for its fields."
+This caused the AI to dump all Step 2 field requests in the same response as the Step 1
+action card — before the user had clicked Confirm.
 
-**Fix**:
+**Evidence**: `evidence/media__1774090173437.png` — screenshot shows the Weight action card
+(Step 1, unconfirmed) with a full block of text below it asking for all Sleep fields (Step 2).
+
+**Fix**: Updated FLOW RULE 4c to restore the correct wait-for-confirm behaviour:
+
+```
+// Before (broken — premature)
+Then IMMEDIATELY, in the same response, transition to Step N+1:
+"<trackerName>" — ask for the fields: <fields>.
+Do NOT wait for user confirmation between steps.
+
+// After (correct — wait for confirm)
+Let Armaan know the card is ready to confirm, and that Step N+1 (<trackerName>)
+will follow once he confirms. Do NOT ask for Step N+1 data yet — wait for him
+to confirm the card above first.
+```
+
+**How the step-advance actually works**: `route.ts` advances `current_step_index` on the
+server as soon as the AI produces an action card for the current step's tracker. So by the
+time the user confirms the card and sends any follow-up message, the session is already on
+the next step — the AI will ask for it naturally. No "say next" friction, no premature prompt.
+
+---
+
+## Fix #2 — Edit Functionality (Already Present — No Change Needed)
+
+**Handoff claim**: "Users cannot edit AI-extracted data before logging."
+
+**Audit result**: `src/components/chat/ActionCard.tsx` lines 191–197 already render every
+field as an `<input type="text">` with an `onChange` handler wired to `editableFields` state.
+On Confirm, the **edited** values (not the original AI values) are sent to `confirmLogAction`.
+
+The handoff was written against an older version of the code. No change required.
+
+---
+
+## Fix #3 — Navigation Latency: Unbounded Data Fetches
+
+**File**: `src/lib/db/chat.ts`
+
+**Root Cause**: Two functions had no `LIMIT` clause:
+
+| Function | Problem |
+|----------|---------|
+| `getSessions()` | Fetched ALL sessions — every chat page load pulled the entire session list |
+| `getMessages(sessionId)` | Fetched ALL messages with no cap — a session with 200+ messages sent every `actions` JSONB blob to the browser on every navigation |
+
+Both fire on every `[sessionId]/page.tsx` render (they run in parallel via `Promise.all`,
+but `getMessages` also has a sequential dependency on `getSession` completing first, creating
+a two-round-trip waterfall per navigation).
+
+**Fix**: Added two named constants and applied limits to both queries:
+
 ```typescript
-// Before
-return String(rounded)
-
-// After
-return unit ? `${String(rounded)} ${unit}` : String(rounded)
+const SESSIONS_SIDEBAR_LIMIT = 30   // sidebar only needs recent sessions
+const MESSAGES_DISPLAY_LIMIT = 100  // cap chat history sent to browser
 ```
 
-**File**: `src/lib/utils/format.ts`
+- `getSessions()`: `.limit(SESSIONS_SIDEBAR_LIMIT)` — capped at 30 most-recent sessions
+- `getMessages()`: fetches newest 100 messages descending, then reverses to chronological
+  order for display (mirrors the existing pattern in `getRecentMessagesForAI`)
+
+Note: `getRecentMessagesForAI` (called inside the chat API route for AI context) already
+had its own separate `limit` of 10–20 — this was not changed.
 
 ---
 
-## Priority #3 — Vision-Only Submission Block
+## Handoff File Mapping (Incorrect Paths → Actual Files)
 
-**Problem**: Sending an image with no text caused `400 Message is required`.
+The handoff referenced `src/pages/Chat.tsx` and `src/pages/Logger.tsx` — these don't exist.
+YAHA uses Next.js 15 App Router. Correct file mapping:
 
-**Root Cause**: `route.ts` validated `message` unconditionally before checking for attachments. Also: `message.substring(0, 50)` would fail if message was undefined.
-
-**Fixes**:
-1. `message` in `ChatRequestBody` changed to `string | undefined`
-2. Validation guard relaxed — message only required when `attachments.length === 0`:
-   ```typescript
-   const hasAttachments = Array.isArray(rawAttachments) && rawAttachments.length > 0
-   if (!hasAttachments && (!message || ...)) return 400
-   ```
-3. Log preview: `message ? message.substring(0, 50) : '[image-only]'`
-4. Length check: `if (message && message.length > MAX_MESSAGE_LENGTH)`
-5. Downstream null-guards: `message || ''` for Gemini input, `detectRoutineTrigger`, `normalizedMsg`
-
-**File**: `src/app/api/chat/route.ts`
+| Handoff Reference | Actual File |
+|-------------------|-------------|
+| `src/pages/Chat.tsx` (routineContextInjection) | `src/lib/ai/prompt-builder.ts` |
+| `src/pages/Chat.tsx` (limit(300) fetch) | `src/lib/db/chat.ts` |
+| `src/pages/Logger.tsx` (Edit button) | `src/components/chat/ActionCard.tsx` (already done) |
+| `navigate('/containers/:id/log')` | N/A — inline editing already present in ActionCard |
 
 ---
 
-## Priority #4a — Correlator Edit Mode
+## Verification
 
-**Problem**: Correlator modal only supported create and delete — no way to edit an existing metric.
+- `npx tsc --noEmit`: zero errors in production source; all failures are pre-existing test
+  file stubs (`__tests__/`) not caused by these changes
+- Preview server: loaded at `localhost:49927`, dashboard renders, zero console errors
+- OLED theme: intact
 
-**Solution**:
-
-### Server Action (`src/app/actions/correlations.ts`)
-Added `updateCorrelationAction(id, input)`. The DAL `updateCorrelation` already existed. New action applies same validation as create before calling DB. Revalidates `/journal/correlations` and `/dashboard`.
-
-### Modal UI (`src/components/journal/CorrelatorModal.tsx`)
-- `view` extended to `'list' | 'new' | 'edit'`
-- `editingId: string | null` tracks which correlation is being edited
-- `formulaToRows(formula)`: recursive tree traversal to reconstruct `VariableRow[]` from a `FormulaNode` for the formula builder UI
-- `handleEdit(correlation)`: populates form fields → `view = 'edit'`
-- `handleSave` branches on `view === 'edit'` to call `updateCorrelationAction`
-- List view: `Pencil` icon button beside each metric's delete button
-- Header: `ChevronLeft` back button in edit view; title changes to "Edit Metric"
-- Footer: button label "Update Metric" in edit mode
-
----
-
-## Priority #4b — Tracker History Entry Edit Button
-
-**Problem**: `LogEntryCard.tsx` (used in `TrackerHistoryView`) only had a delete button. No way to edit logged entries from the history page.
-
-**Solution** (`src/components/trackers/LogEntryCard.tsx`):
-- Added `isEditing`, `editValues`, `editError` state
-- `startEdit()`: pre-populates `editValues` from `log.fields` for all schema fields
-- `cancelEdit()` / `saveEdit()`: coerces values by field type, calls `updateLogAction`
-- Header row: `Pencil` + `Trash2` (both `opacity-0`, shown on `group-hover`) when not editing; `Check` + `X` when editing
-- Delete hidden during edit mode
-- `EditFieldInput` sub-component: type-aware inputs (`number`, `text`, `rating`, `time`) with OLED focus styles (`focus:border-white/30 focus:ring-white/20`)
-
----
-
-## Previous Sprint — Pro Max UI/UX Redesign
-
-Full-app OLED glassmorphism pass across all pages and components:
-
-| Area | Changes |
-|------|---------|
-| Navigation | Glass sidebar/mobile-nav, nutrition active glow, left accent bar |
-| Dashboard | Glass widgets, per-tracker gradient glow dots, glass empty state |
-| Chat | Nutrition gradient user bubbles, glass AI bubbles, bouncing dots loader |
-| Journal | Glass pill nav, premium empty states |
-| Trackers | Glass cards, tracker-color icon badges + glow, top accent lines |
-| Analytics | Glass tracker rows, `font-black` headers |
-| Routines/Settings | Glass inputs, nutrition save buttons |
-
----
-
-## Previous Sprint — Bug Fixes (Session State, Routing, Formatting)
-
-| Bug | Fix |
-|-----|-----|
-| Session State Blindness | `SESSION_COLUMNS` expanded to include all 7 fields so `active_routine_id` and `current_step_index` persist across turns |
-| AI escaping JSON mandate | Unconditional `🔴 MANDATORY OUTPUT RULE` header added to routine prompt |
-| Decimal time display | `formatFieldValue` called with `label` arg; time fields now show `6h 22m` not `6.37` |
-| UUID placeholder crash | Migration `20260316000000_fix_sleep_tracker_placeholder.sql` fixes invalid UUIDs in `routines.steps` JSONB |
-| Routine step leak | Removed `getFullSchema()` call that leaked unrelated tracker fields into routine context |
-| `updateSession` TypeScript error | Extended `updates` type to include all session state fields |
-| `card.trackerType` undefined | Changed to `card.trackerName`; `getTypeColors` lowercases for lookup |
-| Empty chat session pollution | Migration `20260319000000_cleanup_empty_chat_sessions.sql` |
-| Page transition skeletons | `loading.tsx` added for dashboard, journal, analytics, trackers, chat routes |
-| Force Reset dev button | Flask icon button in `RoutineBanner.tsx` to bypass "already completed" check during testing |
-
----
-
-## Summary — Files Changed This Sprint
+## Files Changed
 
 ```
-src/lib/ai/prompt-builder.ts          — P1 auto-advance, JSON mandate, field leak fix
-src/lib/utils/format.ts               — P2 units fix
-src/app/api/chat/route.ts             — P3 vision-only, session state, routine advance
-src/app/actions/correlations.ts       — P4a updateCorrelationAction
-src/components/journal/CorrelatorModal.tsx — P4a edit mode
-src/components/trackers/LogEntryCard.tsx   — P4b inline edit
-src/lib/db/chat.ts                    — SESSION_COLUMNS fix, updateSession type
-supabase/migrations/                  — 3 new migrations
-src/components/** (all)               — Pro Max UI/UX redesign
-src/app/(app)/** (all pages)          — Pro Max UI/UX redesign
+src/lib/ai/prompt-builder.ts   (modified — Fix #1: routine flow prompt)
+src/lib/db/chat.ts             (modified — Fix #3: SESSIONS_SIDEBAR_LIMIT + MESSAGES_DISPLAY_LIMIT)
 ```

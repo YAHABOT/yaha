@@ -1,6 +1,7 @@
 'use client' // needed for confirm/discard state management and server action calls
 
 import { useState } from 'react'
+import { Pencil } from 'lucide-react'
 import { confirmLogAction } from '@/app/actions/chat'
 import { formatFieldValue } from '@/lib/utils/format'
 import type { ActionCard as ActionCardType } from '@/types/action-card'
@@ -61,6 +62,7 @@ function getTypeColors(trackerType?: string) {
 
 export function ActionCard({ card, onConfirm, onDiscard, onConfirmed }: Props): React.ReactElement {
   const [status, setStatus] = useState<ActionCardStatus>('pending')
+  const [isEditExpanded, setIsEditExpanded] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [editableFields, setEditableFields] = useState<Record<string, string | number | null>>(() => {
     // Pre-format decimal time/duration values so cards show "6h 42m" / "22:50" not "6.37" / "22.83"
@@ -171,9 +173,19 @@ export function ActionCard({ card, onConfirm, onDiscard, onConfirmed }: Props): 
             {card.trackerName}
           </h3>
         </div>
-        <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest ${typeColors.text} border-current/20 bg-current/5`}>
-          Pending Log
-        </span>
+        <div className="flex items-center gap-2.5">
+          <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest ${typeColors.text} border-current/20 bg-current/5`}>
+            {isEditExpanded ? 'Editing' : 'Pending Log'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setIsEditExpanded(!isEditExpanded)}
+            className="rounded-lg p-1 text-muted-foreground/60 transition-all hover:bg-white/[0.08] hover:text-muted-foreground"
+            aria-label="Edit entry"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Fields Grid */}

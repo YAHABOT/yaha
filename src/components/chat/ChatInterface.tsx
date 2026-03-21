@@ -290,7 +290,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       }
 
       if (data.sessionId !== sessionId) {
-        router.push(`/chat/${data.sessionId}`)
+        router.replace(`/chat/${data.sessionId}`, { scroll: false })
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))

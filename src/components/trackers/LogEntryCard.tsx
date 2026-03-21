@@ -35,6 +35,7 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
   const [isSaving, startSaveTransition] = useTransition()
   const [isEditing, setIsEditing] = useState(false)
   const [editValues, setEditValues] = useState<Record<string, string>>({})
+  const [originalValues, setOriginalValues] = useState<Record<string, unknown>>({})
   const [editError, setEditError] = useState<string | null>(null)
 
   const filledFields = schema.filter(
@@ -50,10 +51,19 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
 
   function startEdit(): void {
     const raw: Record<string, string> = {}
+    const original: Record<string, unknown> = {}
     for (const field of schema) {
       const val = log.fields[field.fieldId]
-      raw[field.fieldId] = val !== null && val !== undefined ? String(val) : ''
+      original[field.fieldId] = val
+      if (val !== null && val !== undefined) {
+        // Format the value for display (e.g., duration 6.7 → "6h 42m")
+        const formatted = formatFieldValue(val, field.unit, field.label)
+        raw[field.fieldId] = formatted === '---' ? String(val) : formatted
+      } else {
+        raw[field.fieldId] = ''
+      }
     }
+    setOriginalValues(original)
     setEditValues(raw)
     setIsEditing(true)
     setEditError(null)
@@ -62,6 +72,7 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
   function cancelEdit(): void {
     setIsEditing(false)
     setEditValues({})
+    setOriginalValues({})
     setEditError(null)
   }
 
@@ -71,23 +82,41 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
       const fields: LogFields = {}
       for (const field of schema) {
         const raw = editValues[field.fieldId]
-        if (raw === '' || raw === undefined) {
-          fields[field.fieldId] = null
-          continue
+        const original = originalValues[field.fieldId]
+
+        // Determine the new value
+        let newValue: unknown = null
+        if (raw !== '' && raw !== undefined) {
+          if (field.type === 'number' || field.type === 'rating') {
+            const parsed = Number(raw)
+            newValue = Number.isNaN(parsed) ? null : parsed
+          } else {
+            newValue = raw
+          }
         }
-        if (field.type === 'number' || field.type === 'rating') {
-          const parsed = Number(raw)
-          fields[field.fieldId] = Number.isNaN(parsed) ? null : parsed
-        } else {
-          fields[field.fieldId] = raw
+
+        // Only include fields that were actually modified (dirty fields pattern)
+        // Compare the new value with the original value
+        if (newValue !== original) {
+          fields[field.fieldId] = newValue as never
         }
       }
+
+      // Only proceed if there are actual changes
+      if (Object.keys(fields).length === 0) {
+        setIsEditing(false)
+        setEditValues({})
+        setOriginalValues({})
+        return
+      }
+
       const result = await updateLogAction(log.id, log.tracker_id, fields)
       if (result.error) {
         setEditError(result.error)
       } else {
         setIsEditing(false)
         setEditValues({})
+        setOriginalValues({})
       }
     })
   }

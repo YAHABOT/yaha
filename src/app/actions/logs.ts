@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createLog, updateLog, deleteLog } from '@/lib/db/logs'
+import { createLog, updateLog, deleteLog, getLog } from '@/lib/db/logs'
 import type { LogFields, LogSource } from '@/types/log'
 
 export async function createLogAction(

@@ -94,6 +94,34 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     }
   }
 
+  // Silent variant — sends a message to the API without adding a visible user bubble.
+  // Used by the routine auto-advance flow so the UI doesn't show an awkward hidden prompt.
+  async function handleSendSilent(text: string): Promise<void> {
+    if (isLoading) return
+    setIsLoading(true)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, sessionId, agentId: activeAgentId })
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setMessages((prev) => [...prev, {
+        id: `mod-${Date.now()}`,
+        session_id: data.sessionId,
+        role: 'assistant',
+        content: data.message.content,
+        actions: data.message.actions,
+        created_at: new Date().toISOString()
+      }])
+    } catch {
+      // Silent — don't surface errors from auto-advance
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   async function handleSendInternal(text: string, routineId?: string) {
     if (isLoading) return
     setIsLoading(true)
@@ -408,7 +436,17 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
               {message.actions && message.actions.length > 0 && (
                 <div className="mt-1 w-full space-y-3">
                   {message.actions.map((card, idx) => (
-                    <ActionCard key={idx} card={card} />
+                    <ActionCard
+                      key={idx}
+                      card={card}
+                      onConfirmed={
+                        // When a routine is active, silently send a continue signal so the
+                        // AI immediately prompts for the next step without user typing "next".
+                        session?.active_routine_id
+                          ? () => handleSendSilent('continue')
+                          : undefined
+                      }
+                    />
                   ))}
                 </div>
               )}

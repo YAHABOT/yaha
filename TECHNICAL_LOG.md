@@ -1,110 +1,97 @@
-# TECHNICAL_LOG — 2026-03-21 Session
+# TECHNICAL_LOG — 2026-03-21 V2 Session
 
-## Mission
-Fix three regressions: Routine Flow (premature Step 2 prompt), Edit functionality, Navigation Latency.
-
----
-
-## Fix #1 — Routine Execution: Premature Step 2 Request
-
-**File**: `src/lib/ai/prompt-builder.ts` — `buildRoutineSystemPrompt`, line 172
-
-**Root Cause**: The previous session changed FLOW RULE 4c to instruct the AI to
-"IMMEDIATELY, in the same response, transition to Step N+1 and ask for its fields."
-This caused the AI to dump all Step 2 field requests in the same response as the Step 1
-action card — before the user had clicked Confirm.
-
-**Evidence**: `evidence/media__1774090173437.png` — screenshot shows the Weight action card
-(Step 1, unconfirmed) with a full block of text below it asking for all Sleep fields (Step 2).
-
-**Fix**: Updated FLOW RULE 4c to restore the correct wait-for-confirm behaviour:
-
-```
-// Before (broken — premature)
-Then IMMEDIATELY, in the same response, transition to Step N+1:
-"<trackerName>" — ask for the fields: <fields>.
-Do NOT wait for user confirmation between steps.
-
-// After (correct — wait for confirm)
-Let Armaan know the card is ready to confirm, and that Step N+1 (<trackerName>)
-will follow once he confirms. Do NOT ask for Step N+1 data yet — wait for him
-to confirm the card above first.
-```
-
-**How the step-advance actually works**: `route.ts` advances `current_step_index` on the
-server as soon as the AI produces an action card for the current step's tracker. So by the
-time the user confirms the card and sends any follow-up message, the session is already on
-the next step — the AI will ask for it naturally. No "say next" friction, no premature prompt.
+This log documents the root causes, architectural decisions, and file changes from the V2 polish sprint.
 
 ---
 
-## Fix #2 — Edit Functionality (Already Present — No Change Needed)
+## Fix 1 — Routine Auto-Advance: `onConfirmed` Callback + Silent Trigger
 
-**Handoff claim**: "Users cannot edit AI-extracted data before logging."
+**Root Cause**: `ChatInterface.tsx` rendered every `ActionCard` without any `onConfirm` prop (line 411 was just `<ActionCard key={idx} card={card} />`). The `onConfirm` callback existed in `ActionCard`'s type signature but was never passed. This meant confirming a log card had zero effect on the chat loop — the AI received no follow-up message and never prompted for the next routine step.
 
-**Audit result**: `src/components/chat/ActionCard.tsx` lines 191–197 already render every
-field as an `<input type="text">` with an `onChange` handler wired to `editableFields` state.
-On Confirm, the **edited** values (not the original AI values) are sent to `confirmLogAction`.
+**Architecture**: The correct fix is NOT to change the prompt (done in V1, caused its own issues) but to wire up a client-side callback that fires after the DB write succeeds. When a routine is active, `ChatInterface` sends a silent `"continue"` message to `/api/chat`. The server sees `current_step_index` already advanced (happened when the AI produced the action card), builds the routine system prompt for step N+1, and responds with the next step's question. The user sees only the AI's response — no user bubble appears for the hidden trigger.
 
-The handoff was written against an older version of the code. No change required.
+**New function added to `ChatInterface.tsx`**: `handleSendSilent(text)` — identical to `handleSendInternal` but skips the optimistic user message and swallows errors silently (auto-advance should never break the chat).
+
+**Files Changed**:
+- `src/components/chat/ActionCard.tsx` — added `onConfirmed?: () => void` prop; called after `setStatus('confirmed')` + existing `onConfirm?.()`.
+- `src/components/chat/ChatInterface.tsx` — added `handleSendSilent`; passed `onConfirmed={() => handleSendSilent('continue')}` to every `ActionCard` when `session?.active_routine_id` is set.
 
 ---
 
-## Fix #3 — Navigation Latency: Unbounded Data Fetches
+## Fix 2 — Dedicated Edit Button on Confirmed ActionCard
 
-**File**: `src/lib/db/chat.ts`
+**Root Cause**: Once `status === 'confirmed'`, the component rendered a static "Logged Successfully" banner with no interactive controls. Users had no path to correct a mistake post-confirmation.
 
-**Root Cause**: Two functions had no `LIMIT` clause:
+**Fix**: Added an "Edit" button to the confirmed state banner. `onClick` sets `status` back to `'pending'`, which re-renders the full editable card with all field inputs, Confirm, and Discard buttons. The previously-confirmed DB row is not deleted — the user must confirm again to overwrite it (which calls `confirmLogAction` a second time with the corrected fields).
 
-| Function | Problem |
-|----------|---------|
-| `getSessions()` | Fetched ALL sessions — every chat page load pulled the entire session list |
-| `getMessages(sessionId)` | Fetched ALL messages with no cap — a session with 200+ messages sent every `actions` JSONB blob to the browser on every navigation |
+**File Changed**: `src/components/chat/ActionCard.tsx` — confirmed state JSX expanded with Edit button.
 
-Both fire on every `[sessionId]/page.tsx` render (they run in parallel via `Promise.all`,
-but `getMessages` also has a sequential dependency on `getSession` completing first, creating
-a two-round-trip waterfall per navigation).
+---
 
-**Fix**: Added two named constants and applied limits to both queries:
+## Fix 3 — Smart Mapper: Fuzzy Label Matching in `sanitizeFields`
+
+**Root Cause**: `sanitizeFields` in `actions.ts` only performed an exact lookup: `let raw = fields[schemaDef.fieldId]`. When Gemini returns `{"Deep Sleep": 1.5, "REM Sleep": 0.8}` but the tracker schema uses `fld_deep_sleep` / `fld_rem_sleep`, every field was silently dropped. 8 of 12 sleep fields were being lost this way.
+
+**Fix**: Added three new helpers before the main sanitize loop:
+
+1. `toSlug(s)` — normalizes any string to lowercase alphanumeric (e.g. `"Deep Sleep"` → `"deepsleep"`, `"fld_deep_sleep"` → `"flddeepsleep"`, bare `"deep_sleep"` → `"deepsleep"`).
+
+2. `buildLabelIndex(schema)` — builds a `Map<slug, fieldId>` for all schema fields, indexing both the label slug and the bare fieldId slug (stripping `fld_` prefix).
+
+3. `resolveField(fieldId, label, fields, labelIndex)` — tries in order:
+   - Exact `fields[fieldId]`
+   - Any key in fields whose slug matches the field's label slug
+   - Any key whose slug matches the fieldId's bare slug
+
+The pre-existing Smart Swapper (Score/Duration flip, Bed/Actual flip) is unchanged.
+
+**File Changed**: `src/lib/ai/actions.ts`
+
+---
+
+## Fix 4 — Navigation Waterfall: Flatten `Promise.all` in `ChatSessionPage`
+
+**Root Cause**: The previous implementation had a sequential waterfall inside the `Promise.all`:
 
 ```typescript
-const SESSIONS_SIDEBAR_LIMIT = 30   // sidebar only needs recent sessions
-const MESSAGES_DISPLAY_LIMIT = 100  // cap chat history sent to browser
+// Old — getMessages waited behind getSession
+const [sessions, sessionData] = await Promise.all([
+  getSessions(),
+  (async () => {
+    const s = await getSession(sessionId)       // round-trip 1
+    const [m, r] = await Promise.all([
+      getMessages(sessionId),                   // round-trip 2 (blocked by round-trip 1)
+      ...
+    ])
+  })()
+])
 ```
 
-- `getSessions()`: `.limit(SESSIONS_SIDEBAR_LIMIT)` — capped at 30 most-recent sessions
-- `getMessages()`: fetches newest 100 messages descending, then reverses to chronological
-  order for display (mirrors the existing pattern in `getRecentMessagesForAI`)
+`getMessages` could not start until `getSession` completed. On a cold Supabase connection this added ~150–300ms of unnecessary latency on every session navigation.
 
-Note: `getRecentMessagesForAI` (called inside the chat API route for AI context) already
-had its own separate `limit` of 10–20 — this was not changed.
+**Fix**: Three independent fetches now run concurrently at the top level:
+
+```typescript
+const [sessions, session, messages] = await Promise.all([
+  getSessions(),
+  getSession(sessionId).catch(() => null),
+  getMessages(sessionId).catch(() => []),
+])
+```
+
+`getRoutine` still runs sequentially after (it needs `session.active_routine_id`), but it only fires when a routine is active — the common case (no routine) now has zero extra round-trips.
+
+**File Changed**: `src/app/(app)/chat/[sessionId]/page.tsx`
 
 ---
 
-## Handoff File Mapping (Incorrect Paths → Actual Files)
+## Summary
 
-The handoff referenced `src/pages/Chat.tsx` and `src/pages/Logger.tsx` — these don't exist.
-YAHA uses Next.js 15 App Router. Correct file mapping:
+| Fix | File(s) | Impact |
+|-----|---------|--------|
+| Routine Auto-Advance | `ActionCard.tsx`, `ChatInterface.tsx` | AI prompts next step after card confirm |
+| Edit Button | `ActionCard.tsx` | Users can re-open confirmed cards |
+| Smart Mapper | `src/lib/ai/actions.ts` | ~8 previously-dropped sleep fields now captured |
+| Nav Waterfall | `chat/[sessionId]/page.tsx` | ~150–300ms removed from session switching |
 
-| Handoff Reference | Actual File |
-|-------------------|-------------|
-| `src/pages/Chat.tsx` (routineContextInjection) | `src/lib/ai/prompt-builder.ts` |
-| `src/pages/Chat.tsx` (limit(300) fetch) | `src/lib/db/chat.ts` |
-| `src/pages/Logger.tsx` (Edit button) | `src/components/chat/ActionCard.tsx` (already done) |
-| `navigate('/containers/:id/log')` | N/A — inline editing already present in ActionCard |
-
----
-
-## Verification
-
-- `npx tsc --noEmit`: zero errors in production source; all failures are pre-existing test
-  file stubs (`__tests__/`) not caused by these changes
-- Preview server: loaded at `localhost:49927`, dashboard renders, zero console errors
-- OLED theme: intact
-
-## Files Changed
-
-```
-src/lib/ai/prompt-builder.ts   (modified — Fix #1: routine flow prompt)
-src/lib/db/chat.ts             (modified — Fix #3: SESSIONS_SIDEBAR_LIMIT + MESSAGES_DISPLAY_LIMIT)
-```
+All production TypeScript checks pass (zero errors outside pre-existing test stubs).

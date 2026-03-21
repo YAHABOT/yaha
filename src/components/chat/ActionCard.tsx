@@ -11,6 +11,7 @@ type Props = {
   card: ActionCardType
   onConfirm?: () => void
   onDiscard?: () => void
+  onConfirmed?: () => void  // fires after the card is confirmed — used by ChatInterface to advance routine
 }
 
 const TRACKER_TYPE_COLORS: Record<string, { border: string; bg: string; text: string; glow: string }> = {
@@ -58,7 +59,7 @@ function getTypeColors(trackerType?: string) {
   return TRACKER_TYPE_COLORS[trackerType.toLowerCase()] ?? DEFAULT_TYPE_COLORS
 }
 
-export function ActionCard({ card, onConfirm, onDiscard }: Props): React.ReactElement {
+export function ActionCard({ card, onConfirm, onDiscard, onConfirmed }: Props): React.ReactElement {
   const [status, setStatus] = useState<ActionCardStatus>('pending')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [editableFields, setEditableFields] = useState<Record<string, string | number | null>>(() => {
@@ -94,6 +95,7 @@ export function ActionCard({ card, onConfirm, onDiscard }: Props): React.ReactEl
 
     setStatus('confirmed')
     onConfirm?.()
+    onConfirmed?.()
   }
 
   function handleDiscard(): void {
@@ -114,14 +116,23 @@ export function ActionCard({ card, onConfirm, onDiscard }: Props): React.ReactEl
         className="animate-in fade-in zoom-in-95 duration-500 rounded-2xl bg-nutrition/[0.06] border border-nutrition/25 p-5 shadow-[0_0_20px_rgba(16,185,129,0.1)]"
         data-testid="action-card-confirmed"
       >
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nutrition/20 shadow-[0_0_12px_rgba(16,185,129,0.3)]">
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-nutrition"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nutrition/20 shadow-[0_0_12px_rgba(16,185,129,0.3)]">
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-nutrition"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <div>
+              <p className="text-sm font-black text-nutrition">Logged Successfully</p>
+              <p className="text-[11px] text-muted-foreground font-medium mt-0.5">{card.trackerName}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-black text-nutrition">Logged Successfully</p>
-            <p className="text-[11px] text-muted-foreground font-medium mt-0.5">{card.trackerName}</p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setStatus('pending')}
+            className="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-muted-foreground/60 transition-all duration-200 hover:border-white/20 hover:bg-white/[0.08] hover:text-muted-foreground"
+          >
+            Edit
+          </button>
         </div>
       </div>
     )

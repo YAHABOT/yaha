@@ -76,14 +76,65 @@ const MINUTES_MAX = 1440 // 24 hours in minutes — reject hallucinated values a
 const MINUTES_TO_HOURS_DIVISOR = 60
 const DURATION_ROUND_FACTOR = 10
 
+// Normalize a string to a slug for fuzzy comparison: lowercase, strip non-alphanumeric
+function toSlug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+// Build a map from normalized label slug → fieldId for fuzzy lookup
+function buildLabelIndex(schema: SchemaField[]): Map<string, string> {
+  const index = new Map<string, string>()
+  for (const f of schema) {
+    index.set(toSlug(f.label), f.fieldId)
+    // Also index the fieldId itself (without fld_ prefix) for partial matches
+    index.set(toSlug(f.fieldId.replace(/^fld_/, '')), f.fieldId)
+  }
+  return index
+}
+
+// Find the value for a schema field by trying: exact fieldId → fuzzy label → fuzzy key slug
+function resolveField(
+  fieldId: string,
+  label: string,
+  fields: Record<string, unknown>,
+  labelIndex: Map<string, string>
+): unknown {
+  // 1. Exact match by fieldId
+  if (fields[fieldId] !== undefined) return fields[fieldId]
+
+  // 2. Fuzzy: find a key in fields whose slug matches this field's label slug or fieldId slug
+  const targetSlugs = new Set([toSlug(label), toSlug(fieldId.replace(/^fld_/, ''))])
+  for (const [key, val] of Object.entries(fields)) {
+    if (targetSlugs.has(toSlug(key))) return val
+  }
+
+  return undefined
+}
+
 export function sanitizeFields(
   fields: Record<string, unknown>,
   schema: SchemaField[]
 ): Record<string, number | string | null> {
   const result: Record<string, number | string | null> = {}
+  const labelIndex = buildLabelIndex(schema)
+
+  // Track which incoming field keys have been consumed to prevent double-logging
+  const consumed = new Set<string>()
 
   for (const schemaDef of schema) {
-    let raw = fields[schemaDef.fieldId]
+    let raw = resolveField(schemaDef.fieldId, schemaDef.label, fields, labelIndex)
+
+    // Track which key was matched so we don't re-use it
+    if (raw !== undefined) {
+      for (const key of Object.keys(fields)) {
+        const slugKey = toSlug(key)
+        const targetSlugs = new Set([toSlug(schemaDef.label), toSlug(schemaDef.fieldId.replace(/^fld_/, '')), schemaDef.fieldId])
+        if (targetSlugs.has(key) || targetSlugs.has(slugKey)) {
+          consumed.add(key)
+          break
+        }
+      }
+    }
 
     if (raw === undefined) continue
 

@@ -34,24 +34,22 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
     )
   }
 
-  // Fetch session data in parallel
-  const [sessions, sessionData] = await Promise.all([
+  // Flatten the waterfall: fetch sessions, session metadata, and messages all in parallel.
+  // getRoutine needs active_routine_id from the session, so it runs in a second microtask —
+  // but getMessages no longer waits on getSession, eliminating the main bottleneck.
+  const [sessions, session, messages] = await Promise.all([
     getSessions(),
-    (async () => {
-      try {
-        const s = await getSession(sessionId)
-        const [m, r] = await Promise.all([
-          getMessages(sessionId),
-          s.active_routine_id ? getRoutine(s.active_routine_id).catch(() => null) : Promise.resolve(null)
-        ])
-        return { session: s, messages: m, routine: r }
-      } catch {
-        return null
-      }
-    })()
+    getSession(sessionId).catch(() => null),
+    getMessages(sessionId).catch(() => [] as Awaited<ReturnType<typeof getMessages>>),
   ])
 
-  if (!sessionData) notFound()
+  if (!session) notFound()
+
+  const routine = session.active_routine_id
+    ? await getRoutine(session.active_routine_id).catch(() => null)
+    : null
+
+  const sessionData = { session, messages, routine }
 
   return (
     <div className="flex h-full">

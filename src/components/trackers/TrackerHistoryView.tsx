@@ -1,43 +1,90 @@
+'use client'
+
 import Link from 'next/link'
-import { ArrowLeft, ClipboardList, Pencil } from 'lucide-react'
-import type { Tracker } from '@/types/tracker'
+import { ArrowLeft, ClipboardList, TrendingUp } from 'lucide-react'
+import type { Tracker, SchemaField } from '@/types/tracker'
 import type { TrackerLog } from '@/types/log'
 import { LogEntryCard } from '@/components/trackers/LogEntryCard'
+import { formatFieldValue } from '@/lib/utils/format'
 
 type Props = {
   tracker: Tracker
   logs: TrackerLog[]
 }
 
+type DailyStats = {
+  [fieldId: string]: {
+    sum: number
+    count: number
+    label: string
+    unit?: string
+    type: 'sum' | 'avg'
+  }
+}
+
+function calculateDailyStats(logs: TrackerLog[], schema: SchemaField[]): DailyStats {
+  const stats: DailyStats = {}
+
+  logs.forEach(log => {
+    Object.entries(log.fields).forEach(([fId, val]) => {
+      if (typeof val !== 'number') return
+      
+      const field = schema.find(s => s.fieldId === fId)
+      if (!field) return
+
+      if (!stats[fId]) {
+        let aggType: 'sum' | 'avg' = 'sum'
+        const labelL = field.label.toLowerCase()
+        if (labelL.includes('hr') || labelL.includes('rate') || labelL.includes('avg') || labelL.includes('score') || labelL.includes('weight')) {
+          aggType = 'avg'
+        }
+
+        stats[fId] = {
+          sum: 0,
+          count: 0,
+          label: field.label,
+          unit: field.unit,
+          type: aggType
+        }
+      }
+
+      stats[fId].sum += val
+      stats[fId].count += 1
+    })
+  })
+
+  return stats
+}
+
 type GroupedLogs = {
   heading: string
   date: string
   entries: TrackerLog[]
+  stats: DailyStats
 }
 
 function formatDateHeading(isoDate: string): string {
   const date = new Date(isoDate)
   const today = new Date()
+  today.setHours(0, 0, 0, 0)
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
 
-  const sameDay = (a: Date, b: Date): boolean =>
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
 
-  if (sameDay(date, today)) return 'Today'
-  if (sameDay(date, yesterday)) return 'Yesterday'
+  if (d.getTime() === today.getTime()) return 'Today'
+  if (d.getTime() === yesterday.getTime()) return 'Yesterday'
 
   return new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
-    year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
-  }).format(date)
+    year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+  }).format(d)
 }
 
-function groupLogsByDate(logs: TrackerLog[]): GroupedLogs[] {
+function groupLogsByDate(logs: TrackerLog[], schema: SchemaField[]): GroupedLogs[] {
   const groups = new Map<string, TrackerLog[]>()
 
   for (const log of logs) {
@@ -59,80 +106,99 @@ function groupLogsByDate(logs: TrackerLog[]): GroupedLogs[] {
         (a, b) =>
           new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime()
       ),
+      stats: calculateDailyStats(entries, schema)
     }))
 }
 
 export function TrackerHistoryView({ tracker, logs }: Props): React.ReactElement {
-  const groups = groupLogsByDate(logs)
+  const groups = groupLogsByDate(logs, tracker.schema)
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl px-4 py-8">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-10">
         <Link
           href="/trackers"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm text-textMuted transition-colors hover:text-textPrimary"
+          className="mb-6 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-textMuted transition-colors duration-300 hover:text-textPrimary"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Trackers
         </Link>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span
-              className="h-4 w-4 rounded-full"
-              style={{ backgroundColor: tracker.color }}
-            />
-            <h1 className="text-2xl font-bold text-textPrimary">{tracker.name}</h1>
-            <span className="rounded-md bg-surfaceHighlight px-2 py-0.5 text-xs font-medium text-textMuted">
-              {tracker.type}
-            </span>
+        <div className="mt-6 flex items-end justify-between">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-4">
+              <div
+                className="flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-300"
+                style={{
+                  backgroundColor: `${tracker.color}18`,
+                  border: `1px solid ${tracker.color}35`,
+                  boxShadow: `0 0 20px -5px ${tracker.color}50`,
+                  color: tracker.color,
+                }}
+              >
+                <TrendingUp className="h-5 w-5" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-black tracking-tight text-textPrimary">
+                  {tracker.name}
+                </h1>
+                <p className="mt-0.5 text-xs font-black uppercase tracking-widest text-textMuted/50">
+                  {logs.length} total entries · {tracker.schema.length} fields
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
             <Link
               href={`/trackers/${tracker.id}/log`}
-              className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-sm font-medium text-textPrimary transition-colors hover:bg-black/[0.06]"
+              className="flex items-center gap-2 rounded-full px-6 py-2.5 text-[11px] font-black uppercase tracking-widest text-background transition-all duration-300 hover:scale-[1.03] hover:opacity-90 active:scale-[0.97]"
+              style={{
+                backgroundColor: tracker.color,
+                boxShadow: `0 4px 20px -4px ${tracker.color}60`,
+              }}
             >
               <ClipboardList className="h-4 w-4" />
-              Log
-            </Link>
-            <Link
-              href={`/trackers/${tracker.id}/schema`}
-              className="flex items-center gap-1.5 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-sm font-medium text-textMuted transition-colors hover:bg-black/[0.06]"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              Schema
+              Log Entry
             </Link>
           </div>
         </div>
-
-        <p className="mt-1 text-sm text-textMuted">
-          {tracker.schema.length} {tracker.schema.length === 1 ? 'field' : 'fields'} ·{' '}
-          {logs.length} {logs.length === 1 ? 'entry' : 'entries'}
-        </p>
       </div>
 
       {/* Log History */}
       {groups.length === 0 ? (
-        <div className="rounded-xl border border-border bg-surface p-8 text-center">
-          <p className="text-textMuted">No entries yet.</p>
+        <div className="flex flex-col items-center justify-center rounded-3xl border border-white/5 bg-white/[0.02] p-16 text-center">
+          <div
+            className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl"
+            style={{
+              backgroundColor: `${tracker.color}15`,
+              border: `1px solid ${tracker.color}30`,
+              color: tracker.color,
+            }}
+          >
+            <ClipboardList className="h-7 w-7" />
+          </div>
+          <p className="mb-2 text-lg font-black text-textPrimary">No entries yet</p>
+          <p className="mb-8 text-sm text-textMuted/60">Start tracking to see your history here.</p>
           <Link
             href={`/trackers/${tracker.id}/log`}
-            className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-nutrition hover:underline"
+            className="rounded-full border border-white/10 bg-white/[0.04] px-8 py-2.5 text-[11px] font-black uppercase tracking-widest text-textPrimary transition-all duration-300 hover:bg-white/[0.08] hover:border-white/20"
           >
-            <ClipboardList className="h-4 w-4" />
-            Log your first entry
+            Create first entry
           </Link>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-12">
           {groups.map((group) => (
-            <section key={group.date}>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-textMuted">
-                {group.heading}
-              </h2>
-              <div className="space-y-2">
+            <section key={group.date} className="relative">
+              <div className="sticky top-0 z-10 -mx-4 mb-4 border-b border-white/5 bg-background/80 px-4 py-2.5 backdrop-blur-md">
+                <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-textMuted/60">
+                  {group.heading}
+                </h2>
+              </div>
+
+              <div className="space-y-3">
                 {group.entries.map((log) => (
                   <LogEntryCard
                     key={log.id}
@@ -141,6 +207,38 @@ export function TrackerHistoryView({ tracker, logs }: Props): React.ReactElement
                   />
                 ))}
               </div>
+
+              {/* Daily Stats Footer */}
+              {Object.keys(group.stats).length > 0 && (group.entries.length > 1 || tracker.name.toLowerCase().includes('food') || tracker.name.toLowerCase().includes('weight')) && (
+                <div
+                  className="mt-4 rounded-2xl p-5"
+                  style={{
+                    backgroundColor: `${tracker.color}08`,
+                    border: `1px solid ${tracker.color}20`,
+                  }}
+                >
+                  <h3
+                    className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"
+                    style={{ color: `${tracker.color}99` }}
+                  >
+                    <TrendingUp className="h-3 w-3" />
+                    Daily Totals & Averages
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                    {Object.values(group.stats).map((stat) => (
+                      <div key={stat.label} className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-textMuted/50">{stat.label}</span>
+                        <span className="text-sm font-black text-textPrimary">
+                          {formatFieldValue(stat.type === 'avg' ? stat.sum / stat.count : stat.sum, stat.unit, stat.label)}
+                        </span>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-textMuted/30">
+                          {stat.type === 'avg' ? 'Average' : 'Total'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </section>
           ))}
         </div>
@@ -148,3 +246,4 @@ export function TrackerHistoryView({ tracker, logs }: Props): React.ReactElement
     </div>
   )
 }
+

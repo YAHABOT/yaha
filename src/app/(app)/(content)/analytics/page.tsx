@@ -1,8 +1,9 @@
 import Link from 'next/link'
 import { TrendingUp, FlaskConical } from 'lucide-react'
-import { getTrackers } from '@/lib/db/trackers'
+import { getTrackersBasic } from '@/lib/db/trackers'
 import { getCorrelations } from '@/lib/db/correlations'
 import { getTrackerLogSummaries } from '@/lib/db/logs'
+import { createServerClient } from '@/lib/supabase/server'
 import type { Tracker } from '@/types/tracker'
 import type { Correlation } from '@/types/correlator'
 import type { TrackerLogSummary } from '@/lib/db/logs'
@@ -33,23 +34,23 @@ function TrackerRow({ tracker, summary }: TrackerRowProps): React.ReactElement {
   return (
     <Link
       href={`/trackers/${tracker.id}`}
-      className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:border-black/10"
+      className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-md px-5 py-4 transition-all duration-300 hover:border-white/10 hover:bg-white/[0.04] group"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4">
         <span
-          className="h-3 w-3 shrink-0 rounded-full"
-          style={{ backgroundColor: tracker.color }}
+          className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_8px_currentColor]"
+          style={{ backgroundColor: tracker.color, color: tracker.color }}
         />
         <div>
-          <p className="text-sm font-medium text-textPrimary">{tracker.name}</p>
-          <p className="text-xs text-textMuted">{tracker.type}</p>
+          <p className="text-sm font-bold text-textPrimary group-hover:text-white transition-colors duration-300">{tracker.name}</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-textMuted opacity-50 mt-0.5">{tracker.type}</p>
         </div>
       </div>
       <div className="text-right">
-        <p className="text-sm font-semibold text-textPrimary">
-          {count} {count === 1 ? 'entry' : 'entries'}
+        <p className="text-sm font-black text-textPrimary">
+          {count} <span className="text-textMuted font-medium">{count === 1 ? 'entry' : 'entries'}</span>
         </p>
-        <p className="text-xs text-textMuted">{formatRelativeDate(lastLogged)}</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-textMuted opacity-50 mt-0.5">{formatRelativeDate(lastLogged)}</p>
       </div>
     </Link>
   )
@@ -61,14 +62,14 @@ type CorrelationRowProps = {
 
 function CorrelationRow({ correlation }: CorrelationRowProps): React.ReactElement {
   return (
-    <div className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
-      <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-mood/10">
+    <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-md px-5 py-4 transition-all duration-300 hover:border-white/10 hover:bg-white/[0.04]">
+      <div className="flex items-center gap-4">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-mood/10 shadow-[0_0_12px_rgba(168,85,247,0.15)]">
           <FlaskConical className="h-4 w-4 text-mood" />
         </div>
         <div>
-          <p className="text-sm font-medium text-textPrimary">{correlation.name}</p>
-          <p className="text-xs text-textMuted">{correlation.unit || 'no unit'}</p>
+          <p className="text-sm font-bold text-textPrimary">{correlation.name}</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-textMuted opacity-50 mt-0.5">{correlation.unit || 'no unit'}</p>
         </div>
       </div>
     </div>
@@ -76,22 +77,26 @@ function CorrelationRow({ correlation }: CorrelationRowProps): React.ReactElemen
 }
 
 export default async function AnalyticsPage(): Promise<React.ReactElement> {
+  const supabase = await createServerClient()
   let trackers: Tracker[] = []
   let correlations: Correlation[] = []
   let summaries: TrackerLogSummary[] = []
 
   try {
     ;[trackers, correlations, summaries] = await Promise.all([
-      getTrackers(),
-      getCorrelations(),
-      getTrackerLogSummaries(),
+      getTrackersBasic(supabase),
+      getCorrelations(supabase),
+      getTrackerLogSummaries(supabase),
     ])
   } catch {
     return (
       <div className="mx-auto max-w-2xl">
-        <p className="text-center text-textMuted">
-          Failed to load analytics. Please refresh the page.
-        </p>
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-md p-10 text-center">
+          <TrendingUp className="mx-auto h-8 w-8 text-textMuted opacity-30 mb-3" />
+          <p className="text-sm font-bold text-textMuted">
+            Failed to load analytics. Please refresh the page.
+          </p>
+        </div>
       </div>
     )
   }
@@ -102,31 +107,37 @@ export default async function AnalyticsPage(): Promise<React.ReactElement> {
   const inactiveTrackers = trackers.filter((t) => !summaryMap.has(t.id))
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-2xl space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Page Header */}
-      <div>
-        <div className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-nutrition" />
-          <h1 className="text-2xl font-bold text-textPrimary">Analytics</h1>
+      <div className="space-y-1">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-nutrition/10 shadow-[0_0_16px_rgba(16,185,129,0.2)]">
+            <TrendingUp className="h-4 w-4 text-nutrition" />
+          </div>
+          <h1 className="text-4xl font-black tracking-tight text-textPrimary">Analytics</h1>
         </div>
-        <p className="mt-1 text-sm text-textMuted">
+        <p className="text-sm font-medium text-textMuted opacity-60 pl-12">
           {totalEntries} total {totalEntries === 1 ? 'entry' : 'entries'} across{' '}
           {trackers.length} {trackers.length === 1 ? 'tracker' : 'trackers'}
         </p>
       </div>
 
       {/* Trackers */}
-      <section>
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-textMuted">
-          Trackers
-        </h2>
+      <section className="space-y-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-textMuted opacity-50">
+            Trackers
+          </h2>
+          <div className="flex-1 border-t border-white/5" />
+        </div>
 
         {trackers.length === 0 ? (
-          <div className="rounded-xl border border-border bg-surface p-6 text-center">
-            <p className="text-sm text-textMuted">No trackers yet.</p>
+          <div className="rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-md p-10 text-center space-y-3">
+            <TrendingUp className="mx-auto h-8 w-8 text-textMuted opacity-20" />
+            <p className="text-sm font-bold text-textMuted">No trackers yet.</p>
             <Link
               href="/trackers/new"
-              className="mt-2 inline-block text-sm font-medium text-nutrition hover:underline"
+              className="inline-block text-xs font-black uppercase tracking-widest text-nutrition hover:text-nutrition/80 transition-colors duration-300"
             >
               Create your first tracker
             </Link>
@@ -152,23 +163,27 @@ export default async function AnalyticsPage(): Promise<React.ReactElement> {
       </section>
 
       {/* Correlations */}
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-textMuted">
-            Correlations
-          </h2>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-1">
+            <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-textMuted opacity-50">
+              Correlations
+            </h2>
+            <div className="flex-1 border-t border-white/5" />
+          </div>
           <Link
             href="/journal"
-            className="text-xs font-medium text-nutrition hover:underline"
+            className="ml-4 text-[10px] font-black uppercase tracking-widest text-nutrition hover:text-nutrition/80 transition-colors duration-300"
           >
             View journal
           </Link>
         </div>
 
         {correlations.length === 0 ? (
-          <div className="rounded-xl border border-border bg-surface p-6 text-center">
-            <p className="text-sm text-textMuted">No formula metrics yet.</p>
-            <p className="mt-1 text-xs text-textMuted">
+          <div className="rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-md p-10 text-center space-y-2">
+            <FlaskConical className="mx-auto h-8 w-8 text-mood opacity-20" />
+            <p className="text-sm font-bold text-textMuted">No formula metrics yet.</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-textMuted opacity-40">
               Add correlations via the daily journal to compute derived metrics.
             </p>
           </div>

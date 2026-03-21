@@ -13,6 +13,15 @@ vi.mock('lucide-react', () => ({
   ChevronRight: ({ className }: { className?: string }) => (
     <span data-testid="icon-chevron-right" className={className} />
   ),
+  GitBranch: ({ className }: { className?: string }) => (
+    <span data-testid="icon-git-branch" className={className} />
+  ),
+  Eye: ({ className }: { className?: string }) => (
+    <span data-testid="icon-eye" className={className} />
+  ),
+  Plus: ({ className }: { className?: string }) => (
+    <span data-testid="icon-plus" className={className} />
+  ),
 }))
 
 // Mock next/navigation for DateNav (client component)
@@ -78,9 +87,11 @@ describe('DayView', () => {
         date={TEST_DATE}
         trackers={[MOCK_TRACKER_NUTRITION]}
         logs={[]}
+        loggedDates={[TEST_DATE]}
+        correlations={[]}
       />
     )
-    expect(screen.getByText('No logs for this day.')).toBeInTheDocument()
+    expect(screen.getByText('No logs for this day')).toBeInTheDocument()
   })
 
   it('renders TrackerDayGroup for each tracker that has logs', () => {
@@ -89,6 +100,8 @@ describe('DayView', () => {
         date={TEST_DATE}
         trackers={[MOCK_TRACKER_NUTRITION, MOCK_TRACKER_SLEEP]}
         logs={[MOCK_LOG_NUTRITION, MOCK_LOG_SLEEP]}
+        loggedDates={[TEST_DATE]}
+        correlations={[]}
       />
     )
     expect(screen.getByText('Daily Nutrition')).toBeInTheDocument()
@@ -101,6 +114,8 @@ describe('DayView', () => {
         date={TEST_DATE}
         trackers={[MOCK_TRACKER_NUTRITION, MOCK_TRACKER_SLEEP]}
         logs={[MOCK_LOG_NUTRITION]}
+        loggedDates={[TEST_DATE]}
+        correlations={[]}
       />
     )
     expect(screen.getByText('Daily Nutrition')).toBeInTheDocument()
@@ -113,9 +128,11 @@ describe('DayView', () => {
         date={TEST_DATE}
         trackers={[MOCK_TRACKER_NUTRITION]}
         logs={[]}
+        loggedDates={[TEST_DATE]}
+        correlations={[]}
       />
     )
-    // DateNav will display the formatted date — check for year at minimum
+    // Header will display the formatted date — check for year at minimum
     expect(screen.getByText(/2026/)).toBeInTheDocument()
   })
 
@@ -131,6 +148,8 @@ describe('DayView', () => {
         date={TEST_DATE}
         trackers={[MOCK_TRACKER_NUTRITION]}
         logs={[MOCK_LOG_NUTRITION, secondLog]}
+        loggedDates={[TEST_DATE]}
+        correlations={[]}
       />
     )
     // Tracker name appears once (one group)

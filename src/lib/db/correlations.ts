@@ -1,11 +1,13 @@
 import { createServerClient } from '@/lib/supabase/server'
+import { getSafeUser } from '@/lib/supabase/auth'
 import type { Correlation, CreateCorrelationInput } from '@/types/correlator'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const CORRELATION_COLUMNS = 'id, user_id, name, formula, unit, created_at'
 
-export async function getCorrelations(): Promise<Correlation[]> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export async function getCorrelations(supabaseClient?: SupabaseClient): Promise<Correlation[]> {
+  const supabase = supabaseClient ?? await createServerClient()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { data, error } = await supabase
@@ -19,7 +21,7 @@ export async function getCorrelations(): Promise<Correlation[]> {
 
 export async function getCorrelation(id: string): Promise<Correlation> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { data, error } = await supabase
@@ -34,7 +36,7 @@ export async function getCorrelation(id: string): Promise<Correlation> {
 
 export async function createCorrelation(input: CreateCorrelationInput): Promise<Correlation> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { data, error } = await supabase
@@ -57,7 +59,7 @@ export async function updateCorrelation(
   input: Partial<CreateCorrelationInput>
 ): Promise<Correlation> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const updates: Record<string, unknown> = {}
@@ -83,7 +85,7 @@ export async function updateCorrelation(
 
 export async function deleteCorrelation(id: string): Promise<void> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { error } = await supabase

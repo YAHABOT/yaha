@@ -56,6 +56,8 @@ export function validateActionCard(card: unknown): ActionCard | null {
     trackerId: c.trackerId as string,
     trackerName: c.trackerName as string,
     fields: c.fields as Record<string, number | string | null>,
+    fieldLabels: (c.fieldLabels as Record<string, string>) || undefined,
+    fieldUnits: (c.fieldUnits as Record<string, string>) || undefined,
     date: c.date as string,
     source,
   }
@@ -81,42 +83,80 @@ export function sanitizeFields(
   const result: Record<string, number | string | null> = {}
 
   for (const schemaDef of schema) {
-    const raw = fields[schemaDef.fieldId]
+    let raw = fields[schemaDef.fieldId]
 
     if (raw === undefined) continue
 
-    if (schemaDef.type === 'number' || schemaDef.type === 'rating') {
+    // Handle duration strings like "06:08", "7h 13m", "1:05"
+    if (typeof raw === 'string' && (raw.includes(':') || raw.toLowerCase().includes('h') || raw.toLowerCase().includes('m'))) {
+      const match = raw.match(/(\d+)\s*h?[:\s]\s*(\d+)\s*m?/)
+      if (match) {
+        const h = parseInt(match[1], 10)
+        const m = parseInt(match[2], 10)
+        raw = h + m / 60
+      } else {
+        // Try single number match for "7h" or "13m"
+        const hMatch = raw.match(/(\d+)\s*h/)
+        const mMatch = raw.match(/(\d+)\s*m/)
+        if (hMatch || mMatch) {
+          raw = (hMatch ? parseInt(hMatch[1], 10) : 0) + (mMatch ? parseInt(mMatch[1], 10) / 60 : 0)
+        }
+      }
+    }
+
+    if (schemaDef.type === 'number' || schemaDef.type === 'rating' || schemaDef.type === 'time') {
       const num = Number(raw)
 
       if (Number.isNaN(num)) {
-        result[schemaDef.fieldId] = null
+        result[schemaDef.fieldId] = raw !== null ? String(raw) : null
         continue
       }
 
+      // Round to 2 decimal places for storage
+      const rounded = Math.round(num * 100) / 100
+
       if (
         (schemaDef.unit === 'kg' || schemaDef.unit === 'lbs') &&
-        num > WEIGHT_SANITY_MAX
+        rounded > WEIGHT_SANITY_MAX
       ) {
         result[schemaDef.fieldId] = null
         continue
       }
 
-      if (schemaDef.unit === 'hrs' && num > HOURS_MAX) {
-        // Reject values that exceed the maximum plausible minutes (24h = 1440 min)
-        if (num > MINUTES_MAX) {
-          result[schemaDef.fieldId] = null
-          continue
-        }
-        const converted =
-          Math.round((num / MINUTES_TO_HOURS_DIVISOR) * DURATION_ROUND_FACTOR) /
-          DURATION_ROUND_FACTOR
-        result[schemaDef.fieldId] = converted
-        continue
-      }
-
-      result[schemaDef.fieldId] = num
+      result[schemaDef.fieldId] = rounded
     } else {
       result[schemaDef.fieldId] = raw !== null ? String(raw) : null
+    }
+  }
+
+  // --- SMART SWAPPER ---
+  // 1. Score vs Duration Flip
+  const scoreField = schema.find(f => f.label.toLowerCase().includes('score') || f.label.toLowerCase().includes('rating'))
+  const durationField = schema.find(f => f.unit === 'hrs' || f.label.toLowerCase().includes('time in') || f.label.toLowerCase().includes('actual sleep'))
+
+  if (scoreField && durationField) {
+    const scoreVal = result[scoreField.fieldId]
+    const durationVal = result[durationField.fieldId]
+
+    if (typeof scoreVal === 'number' && typeof durationVal === 'number') {
+      // If score is small (like a duration) and duration is large (like a score), swap them
+      // We assume score is meant to be 0-100 and duration 0-24
+      if (scoreVal < 24 && durationVal > 10) {
+        result[scoreField.fieldId] = durationVal
+        result[durationField.fieldId] = scoreVal
+      }
+    }
+  }
+
+  // 2. Bed vs Actual Sleep Flip (Bed must be >= Actual)
+  const bedField = schema.find(f => f.label.toLowerCase().includes('time in bed'))
+  const actualField = schema.find(f => f.label.toLowerCase().includes('actual sleep time') || f.label.toLowerCase().includes('total sleep time'))
+  if (bedField && actualField) {
+    const bedVal = result[bedField.fieldId]
+    const actualVal = result[actualField.fieldId]
+    if (typeof bedVal === 'number' && typeof actualVal === 'number' && actualVal > bedVal) {
+      result[bedField.fieldId] = actualVal
+      result[actualField.fieldId] = bedVal
     }
   }
 

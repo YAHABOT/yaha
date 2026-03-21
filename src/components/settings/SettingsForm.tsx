@@ -1,8 +1,27 @@
-'use client' // Needed: controlled inputs, optimistic save state, window.confirm for danger actions
+'use client'
 
 import { useState, useTransition } from 'react'
-import { saveSettingsAction } from '@/app/actions/settings'
+import Link from 'next/link'
+import { 
+  saveSettingsAction 
+} from '@/app/actions/settings'
 import type { User } from '@/lib/db/users'
+import { 
+  Bot, 
+  Workflow, 
+  Webhook, 
+  FlaskConical, 
+  ShieldCheck, 
+  Zap, 
+  Clock, 
+  Droplets, 
+  Footprints, 
+  Calculator,
+  Download,
+  Trash2,
+  Save,
+  CheckCircle2
+} from 'lucide-react'
 
 const SAVE_RESET_DELAY_MS = 2000
 
@@ -12,78 +31,37 @@ type Props = {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
-function StatusPill({
-  color,
-  label,
-}: {
-  color: 'green' | 'red'
-  label: string
-}): React.ReactElement {
-  const dotColor = color === 'green' ? 'bg-nutrition' : 'bg-red-500'
-  const textColor = color === 'green' ? 'text-nutrition' : 'text-red-400'
+function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <span className="flex items-center gap-1.5 rounded-full border border-border bg-surfaceHighlight px-3 py-1 text-xs font-medium">
-      <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
-      <span className={textColor}>{label}</span>
-    </span>
-  )
-}
-
-function SectionCard({
-  title,
-  children,
-}: {
-  title: string
-  children: React.ReactNode
-}): React.ReactElement {
-  return (
-    <div className="rounded-xl border border-border bg-surface p-5">
-      <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-textMuted">
-        {title}
-      </h2>
+    <div className="rounded-[32px] border border-white/5 bg-white/[0.02] p-8 backdrop-blur-3xl shadow-2xl space-y-6">
+      <div>
+        <h2 className="text-xl font-black text-textPrimary tracking-tight">{title}</h2>
+        {description && <p className="text-sm text-textMuted opacity-60">{description}</p>}
+      </div>
       {children}
     </div>
   )
 }
 
-function TargetInput({
-  id,
-  label,
-  unit,
-  name,
-  defaultValue,
-  placeholder,
-  max,
-  step,
-}: {
-  id: string
-  label: string
-  unit: string
-  name: string
-  defaultValue: number | undefined
-  placeholder: string
-  max: number
-  step?: number
-}): React.ReactElement {
+function DeveloperButton({ 
+  icon: Icon, 
+  label, 
+  href, 
+  colorClass 
+}: { 
+  icon: React.ElementType; 
+  label: string; 
+  href: string; 
+  colorClass: string 
+}) {
   return (
-    <div>
-      <label htmlFor={id} className="mb-1 block text-xs font-medium uppercase tracking-wider text-textMuted">
-        {label}
-        <span className="ml-1 normal-case text-textMuted/60">({unit})</span>
-      </label>
-      <input
-        id={id}
-        name={name}
-        type="number"
-        inputMode="numeric"
-        min={0}
-        max={max}
-        step={step ?? 1}
-        defaultValue={defaultValue}
-        placeholder={placeholder}
-        className="w-full rounded-lg border border-border bg-surfaceHighlight px-3 py-2.5 text-textPrimary placeholder-textMuted/40 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-      />
-    </div>
+    <Link
+      href={href}
+      className={`flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-black/40 px-4 py-3.5 transition-all hover:scale-[1.02] active:scale-98 shadow-lg group ${colorClass}`}
+    >
+      <Icon className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
+      <span className="text-[11px] font-black uppercase tracking-widest">{label}</span>
+    </Link>
   )
 }
 
@@ -113,19 +91,16 @@ export function SettingsForm({ initialValues }: Props): React.ReactElement {
   }
 
   function handleClearLocalData(): void {
-    const confirmed = window.confirm(
-      'Clear all local data? This will reset any unsaved preferences in your browser.'
-    )
+    const confirmed = window.confirm('Clear all local data? This will reset any unsaved preferences in your browser.')
     if (!confirmed) return
     localStorage.clear()
     sessionStorage.clear()
+    alert('Local data cleared.')
   }
 
   function handleExportJson(): void {
     if (!initialValues) return
-    const blob = new Blob([JSON.stringify(initialValues, null, 2)], {
-      type: 'application/json',
-    })
+    const blob = new Blob([JSON.stringify(initialValues, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -136,145 +111,180 @@ export function SettingsForm({ initialValues }: Props): React.ReactElement {
 
   const isSaving = isPending || saveState === 'saving'
 
-  let saveButtonLabel = 'Save All Changes'
-  if (isSaving) saveButtonLabel = 'Saving...'
-  else if (saveState === 'saved') saveButtonLabel = 'Saved!'
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+      
       {/* Identity & System */}
-      <SectionCard title="Identity & System">
-        <div className="mb-4">
-          <label
-            htmlFor="alias"
-            className="mb-1 block text-xs font-medium uppercase tracking-wider text-textMuted"
-          >
-            Alias
-          </label>
-          <input
-            id="alias"
-            name="alias"
-            type="text"
-            maxLength={50}
-            defaultValue={initialValues?.alias ?? ''}
-            placeholder="Your name"
-            className="w-full rounded-lg border border-border bg-surfaceHighlight px-3 py-2.5 text-textPrimary placeholder-textMuted/40 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-          />
+      <Section title="Identity & System" description="Manage your persona and developer access.">
+        <div className="grid gap-6 md:grid-cols-2">
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-textMuted opacity-40 mb-2 block">Alias</label>
+            <input
+              name="alias"
+              defaultValue={initialValues?.alias ?? ''}
+              className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm font-bold text-textPrimary placeholder:text-textMuted/20 focus:border-nutrition/50 focus:outline-none focus:ring-1 focus:ring-nutrition/20 transition-all duration-300"
+              placeholder="Unknown"
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-textMuted opacity-40 mb-2 block">Developer Mode</label>
+            <div className="grid grid-cols-2 gap-3">
+              <DeveloperButton 
+                icon={FlaskConical} 
+                label="Mock Mode" 
+                href="#" 
+                colorClass="hover:border-red-500/30 hover:shadow-red-500/5 text-red-400/80 hover:text-red-400" 
+              />
+              <DeveloperButton 
+                icon={Webhook} 
+                label="Webhook" 
+                href="#" 
+                colorClass="hover:border-nutrition/30 hover:shadow-nutrition/5 text-nutrition/80 hover:text-nutrition" 
+              />
+              <DeveloperButton
+                icon={Bot}
+                label="Agent Forge"
+                href="/settings/agent-forge"
+                colorClass="hover:border-sleep/30 hover:shadow-sleep/5 text-sleep/80 hover:text-sleep"
+              />
+              <DeveloperButton 
+                icon={Workflow} 
+                label="Routines" 
+                href="/settings/routines" 
+                colorClass="hover:border-purple-500/30 hover:shadow-purple-500/5 text-purple-400/80 hover:text-purple-400" 
+              />
+            </div>
+          </div>
         </div>
+      </Section>
 
-        <div className="flex flex-wrap gap-2">
-          <StatusPill color="green" label="SUPABASE ONLINE" />
-          <StatusPill color="green" label="GEMINI READY" />
+      {/* System Status */}
+      <Section title="System Status">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-black/20 px-5 py-4">
+            <span className="text-xs font-bold text-textMuted">Supabase Cloud</span>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-nutrition shadow-[0_0_8px_rgba(34,197,94,0.5)] animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-nutrition">Online</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-black/20 px-5 py-4">
+            <span className="text-xs font-bold text-textMuted">Gemini AI</span>
+            <div className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-nutrition shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-nutrition">Ready</span>
+            </div>
+          </div>
         </div>
-      </SectionCard>
+      </Section>
 
       {/* Daily Targets */}
-      <SectionCard title="Daily Targets">
+      <Section title="Daily Targets">
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <TargetInput
-            id="calories"
-            label="Calories"
-            unit="kcal"
-            name="calories"
-            defaultValue={initialValues?.targets?.calories}
-            placeholder="2000"
-            max={10000}
-          />
-          <TargetInput
-            id="sleep"
-            label="Sleep Goal"
-            unit="hrs"
-            name="sleep"
-            defaultValue={initialValues?.targets?.sleep}
-            placeholder="8"
-            max={24}
-            step={0.5}
-          />
-          <TargetInput
-            id="water"
-            label="Water Goal"
-            unit="L"
-            name="water"
-            defaultValue={initialValues?.targets?.water}
-            placeholder="2.5"
-            max={20}
-            step={0.1}
-          />
-          <TargetInput
-            id="steps"
-            label="Steps Goal"
-            unit="steps"
-            name="steps"
-            defaultValue={initialValues?.targets?.steps}
-            placeholder="10000"
-            max={100000}
-          />
+          {[
+            { id: 'calories', label: 'Calories', unit: 'kcal', icon: Calculator, color: 'text-orange-400' },
+            { id: 'sleep', label: 'Sleep Goal', unit: 'hrs', icon: Clock, color: 'text-sleep' },
+            { id: 'water', label: 'Water Goal', unit: 'L', icon: Droplets, color: 'text-blue-400' },
+            { id: 'steps', label: 'Steps Goal', unit: 'steps', icon: Footprints, color: 'text-nutrition' },
+          ].map((target) => (
+            <div key={target.id}>
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-textMuted opacity-40 mb-2 block">
+                {target.label} <span className="normal-case opacity-40">({target.unit})</span>
+              </label>
+              <div className="relative">
+                <input
+                  name={target.id}
+                  type="number"
+                  defaultValue={(initialValues?.targets as Record<string, number | undefined>)?.[target.id]}
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 pl-4 pr-10 py-3 text-sm font-bold text-textPrimary focus:border-nutrition/50 focus:outline-none focus:ring-1 focus:ring-nutrition/20 transition-all duration-300"
+                />
+                <target.icon className={`absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 ${target.color} opacity-40`} />
+              </div>
+            </div>
+          ))}
         </div>
-      </SectionCard>
+      </Section>
 
       {/* Communication Channels */}
-      <SectionCard title="Communication Channels">
-        <label
-          htmlFor="telegram_handle"
-          className="mb-1 block text-xs font-medium uppercase tracking-wider text-textMuted"
-        >
-          Telegram Handle
-        </label>
-        <div className="flex items-center rounded-lg border border-border bg-surfaceHighlight focus-within:border-nutrition focus-within:ring-1 focus-within:ring-nutrition">
-          <span className="pl-3 text-sm text-textMuted">@</span>
-          <input
-            id="telegram_handle"
-            name="telegram_handle"
-            type="text"
-            maxLength={50}
-            defaultValue={
-              initialValues?.telegram_handle
-                ? initialValues.telegram_handle.replace(/^@/, '')
-                : ''
-            }
-            placeholder="username"
-            className="w-full rounded-lg bg-transparent px-2 py-2.5 text-textPrimary placeholder-textMuted/40 focus:outline-none"
-          />
+      <Section title="Communication Channels" description="Sync with your external messenger handles.">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="group rounded-2xl border border-white/5 bg-black/20 p-4 transition-all hover:border-nutrition/30">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nutrition/10 text-nutrition">
+                <Bot className="h-4 w-4" />
+              </div>
+              <span className="text-xs font-black uppercase tracking-widest text-textPrimary">WhatsApp</span>
+            </div>
+            <div className="text-[10px] font-bold text-textMuted opacity-40 mb-4 px-1">PROVIDER STATUS: INACTIVE</div>
+            <input
+              name="whatsapp"
+              placeholder="+1234567890"
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-textPrimary placeholder:text-textMuted/30 focus:border-nutrition/50 focus:outline-none focus:ring-1 focus:ring-nutrition/20 transition-all duration-300"
+            />
+          </div>
+          <div className="group rounded-2xl border border-white/5 bg-black/20 p-4 opacity-40 grayscale pointer-events-none">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 text-textMuted">
+                <ShieldCheck className="h-4 w-4" />
+              </div>
+              <span className="text-xs font-black uppercase tracking-widest text-textPrimary">Telegram</span>
+            </div>
+            <div className="text-[10px] font-bold text-textMuted opacity-40 mb-4 px-1">COMING SOON</div>
+          </div>
         </div>
-        <p className="mt-1.5 text-xs text-textMuted">
-          Used for Telegram bot integration
-        </p>
-      </SectionCard>
+      </Section>
 
-      {/* Save button */}
-      {errorMessage && (
-        <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-          {errorMessage}
+      {/* Action Bar */}
+      <div className="sticky bottom-6 z-10 px-4">
+        <div className="mx-auto max-w-lg rounded-3xl bg-nutrition p-2 shadow-[0_20px_40px_-15px_rgba(34,197,94,0.4)] transition-transform hover:scale-[1.02] active:scale-95 duration-500">
+           <button
+            type="submit"
+            disabled={isSaving}
+            className="flex w-full items-center justify-center gap-3 rounded-2xl py-4 text-sm font-black uppercase tracking-[0.2em] text-background"
+          >
+            {saveState === 'saved' ? (
+              <>
+                <CheckCircle2 className="h-5 w-5" />
+                Changes Applied
+              </>
+            ) : (
+              <>
+                <Save className="h-5 w-5" />
+                {isSaving ? 'Syncing Profile...' : 'Save All Changes'}
+              </>
+            )}
+          </button>
         </div>
-      )}
-
-      <button
-        type="submit"
-        disabled={isSaving}
-        className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-      >
-        {saveButtonLabel}
-      </button>
+      </div>
 
       {/* Data Management */}
-      <SectionCard title="Data Management">
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={handleExportJson}
-            className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-textMuted transition-colors hover:border-black/10 hover:text-textPrimary"
-          >
-            Export JSON
-          </button>
-          <button
-            type="button"
-            onClick={handleClearLocalData}
-            className="rounded-lg border border-red-900 px-4 py-2.5 text-sm font-medium text-red-400 transition-colors hover:border-red-700 hover:bg-red-500/10"
-          >
-            Clear Local Data
-          </button>
-        </div>
-      </SectionCard>
+      <div className="flex items-center justify-center gap-8 py-8">
+        <button
+          type="button"
+          onClick={handleExportJson}
+          className="group flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-textMuted hover:text-textPrimary transition-colors"
+        >
+          <Download className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
+          Export JSON
+        </button>
+        <button
+          type="button"
+          className="group flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-textMuted opacity-40 hover:opacity-100 hover:text-textPrimary transition-opacity"
+        >
+          <Zap className="h-4 w-4" />
+          Import JSON
+        </button>
+        <button
+          type="button"
+          onClick={handleClearLocalData}
+          className="group flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-red-500/50 hover:text-red-500 transition-colors"
+        >
+          <Trash2 className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
+          Clear Local Data
+        </button>
+      </div>
+
     </form>
   )
 }

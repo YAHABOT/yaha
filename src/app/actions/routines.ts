@@ -21,9 +21,10 @@ export async function createRoutineAction(
     }
 
     await createRoutine(input)
-    revalidatePath('/routines')
+    revalidatePath('/settings/routines')
     return { success: true }
-  } catch {
+  } catch (err) {
+    console.error('createRoutineAction error:', err)
     return { error: 'Failed to create routine' }
   }
 }
@@ -50,9 +51,10 @@ export async function updateRoutineAction(
     }
 
     await updateRoutine(id, input)
-    revalidatePath('/routines')
+    revalidatePath('/settings/routines')
     return { success: true }
-  } catch {
+  } catch (err) {
+    console.error('updateRoutineAction error:', err)
     return { error: 'Failed to update routine' }
   }
 }
@@ -62,9 +64,10 @@ export async function deleteRoutineAction(
 ): Promise<{ success?: boolean; error?: string }> {
   try {
     await deleteRoutine(id)
-    revalidatePath('/routines')
+    revalidatePath('/settings/routines')
     return { success: true }
-  } catch {
+  } catch (err) {
+    console.error('deleteRoutineAction error:', err)
     return { error: 'Failed to delete routine' }
   }
 }

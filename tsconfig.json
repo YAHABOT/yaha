@@ -40,6 +40,8 @@
     "**/*.mts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "test-gemini.ts",
+    "tmp_check_user.ts"
   ]
 }

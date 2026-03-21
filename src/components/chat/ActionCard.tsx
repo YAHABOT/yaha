@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { confirmLogAction } from '@/app/actions/chat'
+import { formatFieldValue } from '@/lib/utils/format'
 import type { ActionCard as ActionCardType } from '@/types/action-card'
 
 type ActionCardStatus = 'pending' | 'confirmed' | 'discarded' | 'loading'
@@ -12,20 +13,78 @@ type Props = {
   onDiscard?: () => void
 }
 
-function formatFieldValue(value: number | string | null): string {
-  if (value === null || value === undefined) return '—'
-  return String(value)
+const TRACKER_TYPE_COLORS: Record<string, { border: string; bg: string; text: string; glow: string }> = {
+  nutrition: {
+    border: 'border-l-nutrition',
+    bg: 'bg-nutrition/[0.05]',
+    text: 'text-nutrition',
+    glow: 'shadow-[0_0_24px_rgba(16,185,129,0.12)]',
+  },
+  sleep: {
+    border: 'border-l-sleep',
+    bg: 'bg-sleep/[0.05]',
+    text: 'text-sleep',
+    glow: 'shadow-[0_0_24px_rgba(59,130,246,0.12)]',
+  },
+  workout: {
+    border: 'border-l-workout',
+    bg: 'bg-workout/[0.05]',
+    text: 'text-workout',
+    glow: 'shadow-[0_0_24px_rgba(249,115,22,0.12)]',
+  },
+  mood: {
+    border: 'border-l-mood',
+    bg: 'bg-mood/[0.05]',
+    text: 'text-mood',
+    glow: 'shadow-[0_0_24px_rgba(168,85,247,0.12)]',
+  },
+  water: {
+    border: 'border-l-water',
+    bg: 'bg-water/[0.05]',
+    text: 'text-water',
+    glow: 'shadow-[0_0_24px_rgba(6,182,212,0.12)]',
+  },
+}
+
+const DEFAULT_TYPE_COLORS = {
+  border: 'border-l-white/10',
+  bg: 'bg-white/[0.02]',
+  text: 'text-muted-foreground',
+  glow: 'shadow-[0_4px_24px_rgba(0,0,0,0.4)]',
+}
+
+function getTypeColors(trackerType?: string) {
+  if (!trackerType) return DEFAULT_TYPE_COLORS
+  return TRACKER_TYPE_COLORS[trackerType.toLowerCase()] ?? DEFAULT_TYPE_COLORS
 }
 
 export function ActionCard({ card, onConfirm, onDiscard }: Props): React.ReactElement {
   const [status, setStatus] = useState<ActionCardStatus>('pending')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [editableFields, setEditableFields] = useState<Record<string, string | number | null>>(() => {
+    // Pre-format decimal time/duration values so cards show "6h 42m" / "22:50" not "6.37" / "22.83"
+    return Object.fromEntries(
+      Object.entries(card.fields).map(([key, value]) => {
+        if (value === null || value === undefined || value === '') return [key, value]
+        const label = card.fieldLabels?.[key]
+        const unit = card.fieldUnits?.[key]
+        const formatted = formatFieldValue(value, unit, label)
+        return [key, formatted === '---' ? value : formatted]
+      })
+    )
+  })
+
+  const typeColors = getTypeColors(card.trackerName)
 
   async function handleConfirm(): Promise<void> {
     setStatus('loading')
     setErrorMessage(null)
 
-    const result = await confirmLogAction(card)
+    // Send the EDITED fields, not just the original ones
+    const result = await confirmLogAction({
+      ...card,
+      fields: editableFields
+    })
 
     if (result.error) {
       setErrorMessage(result.error)
@@ -42,13 +101,28 @@ export function ActionCard({ card, onConfirm, onDiscard }: Props): React.ReactEl
     onDiscard?.()
   }
 
+  const handleFieldChange = (key: string, value: string) => {
+    setEditableFields(prev => ({
+      ...prev,
+      [key]: value
+    }))
+  }
+
   if (status === 'confirmed') {
     return (
       <div
-        className="rounded-xl border border-nutrition/20 bg-surfaceHighlight p-4"
+        className="animate-in fade-in zoom-in-95 duration-500 rounded-2xl bg-nutrition/[0.06] border border-nutrition/25 p-5 shadow-[0_0_20px_rgba(16,185,129,0.1)]"
         data-testid="action-card-confirmed"
       >
-        <p className="text-sm font-medium text-nutrition">Logged</p>
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nutrition/20 shadow-[0_0_12px_rgba(16,185,129,0.3)]">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-nutrition"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </div>
+          <div>
+            <p className="text-sm font-black text-nutrition">Logged Successfully</p>
+            <p className="text-[11px] text-muted-foreground font-medium mt-0.5">{card.trackerName}</p>
+          </div>
+        </div>
       </div>
     )
   }
@@ -56,55 +130,110 @@ export function ActionCard({ card, onConfirm, onDiscard }: Props): React.ReactEl
   if (status === 'discarded') {
     return (
       <div
-        className="rounded-xl border border-border bg-surfaceHighlight p-4"
+        className="animate-out fade-out zoom-out-95 duration-500 rounded-2xl bg-white/[0.02] border border-white/5 p-5"
         data-testid="action-card-discarded"
       >
-        <p className="text-sm text-textMuted">Discarded</p>
+        <p className="text-sm font-medium text-muted-foreground/50">Log discarded</p>
       </div>
     )
   }
 
-  const fieldEntries = Object.entries(card.fields)
+  // Order fields by schema (fieldLabels keys come from schema.forEach in the route,
+  // so they preserve schema order for fresh responses; fall back to raw key order for history)
+  const orderedKeys = card.fieldLabels
+    ? Object.keys(card.fieldLabels)
+    : Object.keys(editableFields)
+  const fieldEntries = orderedKeys
+    .filter((key) => key in editableFields)
+    .map((key) => [key, editableFields[key]] as [string, string | number | null])
 
   return (
     <div
-      className="rounded-xl border border-border bg-surfaceHighlight p-4"
+      className={`animate-in slide-in-from-bottom-4 duration-500 relative flex flex-col gap-4 rounded-3xl border-l-4 border border-white/[0.06] p-6 backdrop-blur-md transition-all ${typeColors.border} ${typeColors.bg} ${typeColors.glow}`}
       data-testid="action-card"
     >
-      <p className="mb-3 text-sm font-semibold text-textPrimary">
-        Log to {card.trackerName}
-      </p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className={`h-2 w-2 rounded-full ${typeColors.text.replace('text-', 'bg-')} opacity-80`} />
+          <h3 className="text-base font-black tracking-tight text-foreground">
+            {card.trackerName}
+          </h3>
+        </div>
+        <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest ${typeColors.text} border-current/20 bg-current/5`}>
+          Pending Log
+        </span>
+      </div>
 
-      <ul className="mb-3 space-y-1">
-        {fieldEntries.map(([key, value]) => (
-          <li key={key} className="flex items-center gap-2 text-xs">
-            <span className="text-textMuted">{key}:</span>
-            <span className="text-textPrimary">{formatFieldValue(value)}</span>
-          </li>
-        ))}
-      </ul>
+      {/* Fields Grid */}
+      <div className="grid grid-cols-2 gap-2.5">
+        {fieldEntries.map(([key, value]) => {
+          const isLarge = String(value || '').length > 20
+          const label = card.fieldLabels?.[key] || key
+          const unit = card.fieldUnits?.[key]
 
-      <p className="mb-4 text-xs text-textMuted">Date: {card.date}</p>
+          return (
+            <div
+              key={key}
+              className={`flex flex-col gap-1.5 rounded-2xl bg-white/[0.03] p-3.5 border border-white/[0.05] transition-all duration-200 focus-within:border-white/10 focus-within:bg-white/[0.05] ${isLarge ? 'col-span-2' : ''}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                  {label}
+                </span>
+                {unit && (
+                  <span className={`text-[9px] font-black uppercase tracking-wider ${typeColors.text} opacity-50`}>
+                    {unit}
+                  </span>
+                )}
+              </div>
 
+              <input
+                type="text"
+                value={value ?? ''}
+                onChange={(e) => handleFieldChange(key, e.target.value)}
+                className="bg-transparent text-sm font-bold text-foreground focus:outline-none w-full placeholder:text-muted-foreground/20 leading-snug"
+                placeholder="..."
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Date row */}
+      <div className="flex items-center justify-between px-0.5">
+        <span className="text-[11px] font-medium text-muted-foreground/50">
+          {card.date}
+        </span>
+      </div>
+
+      {/* Error */}
       {errorMessage && (
-        <p className="mb-3 text-xs text-red-400" data-testid="action-card-error">
+        <p className="rounded-2xl bg-red-500/[0.08] border border-red-500/20 p-3.5 text-xs font-medium text-red-400" data-testid="action-card-error">
           {errorMessage}
         </p>
       )}
 
-      <div className="flex gap-2">
+      {/* Actions */}
+      <div className="flex gap-2.5">
         <button
           onClick={handleConfirm}
           disabled={status === 'loading'}
-          className="flex-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
+          className="flex-1 rounded-2xl bg-nutrition px-4 py-3 text-sm font-black text-black transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(16,185,129,0.35)] active:scale-[0.98] disabled:opacity-40 disabled:shadow-none disabled:scale-100"
           data-testid="action-card-confirm"
         >
-          {status === 'loading' ? 'Logging...' : 'Confirm'}
+          {status === 'loading' ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-black/60 animate-bounce [animation-delay:0ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-black/60 animate-bounce [animation-delay:120ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-black/60 animate-bounce [animation-delay:240ms]" />
+            </span>
+          ) : 'Log Entry'}
         </button>
         <button
           onClick={handleDiscard}
           disabled={status === 'loading'}
-          className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-textMuted transition-colors hover:bg-surfaceHighlight disabled:opacity-50"
+          className="rounded-2xl bg-white/[0.04] border border-white/[0.06] px-4 py-3 text-sm font-bold text-muted-foreground/60 transition-all duration-200 hover:bg-white/[0.07] hover:text-muted-foreground active:scale-[0.98] disabled:opacity-30"
           data-testid="action-card-discard"
         >
           Discard

@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createCorrelation, deleteCorrelation } from '@/lib/db/correlations'
+import { createCorrelation, deleteCorrelation, updateCorrelation } from '@/lib/db/correlations'
 import type { FormulaNode, CreateCorrelationInput } from '@/types/correlator'
 
 const MAX_NAME_LENGTH = 50
@@ -57,6 +57,35 @@ export async function createCorrelationAction(
     return { success: true }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Failed to create correlation' }
+  }
+}
+
+export async function updateCorrelationAction(
+  id: string,
+  input: CreateCorrelationInput
+): Promise<{ success?: true; error?: string }> {
+  try {
+    const name = input.name?.trim()
+    if (!name) return { error: 'Name is required.' }
+    if (name.length > MAX_NAME_LENGTH) {
+      return { error: `Name must be ${MAX_NAME_LENGTH} characters or fewer.` }
+    }
+
+    const unit = input.unit?.trim() ?? ''
+    if (unit.length > MAX_UNIT_LENGTH) {
+      return { error: `Unit must be ${MAX_UNIT_LENGTH} characters or fewer.` }
+    }
+
+    if (!isValidFormulaNode(input.formula)) {
+      return { error: 'Invalid formula structure.' }
+    }
+
+    await updateCorrelation(id, { name, formula: input.formula, unit })
+    revalidatePath('/journal/correlations')
+    revalidatePath('/dashboard')
+    return { success: true }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to update correlation' }
   }
 }
 

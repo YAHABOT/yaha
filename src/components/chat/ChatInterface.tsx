@@ -1,16 +1,18 @@
-'use client' // needed for message state, optimistic updates, auto-scroll, file upload
+'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { Paperclip, Send, X } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Paperclip, Send, X, Bot, Zap, CheckCircle2, ChevronRight } from 'lucide-react'
 import { ActionCard } from '@/components/chat/ActionCard'
-import type { ChatMessage } from '@/types/chat'
+import { AgentSelector } from '@/components/chat/AgentSelector'
+import type { ChatMessage, ChatSession } from '@/types/chat'
 import type { ChatAttachment } from '@/types/action-card'
+import type { Agent } from '@/types/agent'
+import type { Routine } from '@/types/routine'
+import { getAgentsAction } from '@/app/actions/agents'
 
 const MAX_TEXTAREA_ROWS = 6
 const ACCEPTED_FILE_TYPES = 'image/*,audio/*,application/pdf'
-
-// Client-side allowlist mirrors the server-side set for early UX feedback
 const ALLOWED_MIME_PREFIXES = ['image/', 'audio/']
 const ALLOWED_MIME_EXACT = new Set(['application/pdf'])
 
@@ -23,80 +25,128 @@ type AttachedFile = {
   attachment: ChatAttachment
 }
 
-type ChatApiResponse = {
-  message: {
-    role: 'model'
-    content: string
-    actions: import('@/types/action-card').ActionCard[]
-  }
-  sessionId: string
-}
-
 type Props = {
   initialMessages: ChatMessage[]
   sessionId: string
+  session: ChatSession | null
+  initialRoutine?: Routine | null
 }
 
-function buildOptimisticMessage(content: string): ChatMessage {
-  return {
-    id: `optimistic-${crypto.randomUUID()}`,
-    session_id: '',
-    role: 'user',
-    content,
-    actions: null,
-    created_at: new Date().toISOString(),
-  }
-}
-
-function buildModelMessage(response: ChatApiResponse['message'], sessionId: string): ChatMessage {
-  return {
-    id: `model-${crypto.randomUUID()}`,
-    session_id: sessionId,
-    role: 'model',
-    content: response.content,
-    actions: response.actions ?? null,
-    created_at: new Date().toISOString(),
-  }
-}
-
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      // Strip the data URL prefix — keep only base64 content
-      const base64 = result.split(',')[1]
-      resolve(base64)
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-function resolveAttachmentType(mimeType: string): 'image' | 'audio' | 'file' {
-  if (mimeType.startsWith('image/')) return 'image'
-  if (mimeType.startsWith('audio/')) return 'audio'
-  return 'file'
-}
-
-export function ChatInterface({ initialMessages, sessionId }: Props): React.ReactElement {
+export function ChatInterface({ initialMessages, sessionId, session: initialSession, initialRoutine }: Props): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [input, setInput] = useState<string>('')
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [session, setSession] = useState<ChatSession | null>(initialSession)
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(initialSession?.active_agent_id ?? null)
+  const [currentRoutine, setCurrentRoutine] = useState<Routine | null>(initialRoutine ?? null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const triggerSent = useRef(false)
 
-  // Auto-scroll to bottom when messages change
+  // Fetch Agents
+  useEffect(() => {
+    getAgentsAction().then(setAgents)
+  }, [])
+
+  // Auto-trigger ritual if routine param is provided
+  useEffect(() => {
+    if (triggerSent.current) return
+    const routineId = searchParams.get('routine')
+    if (routineId && sessionId === 'new' && messages.length === 0) {
+      triggerSent.current = true
+      const trigger = currentRoutine?.trigger_phrase || "start ritual"
+      handleSendInternal(trigger, routineId)
+    }
+  }, [searchParams, sessionId, messages.length, currentRoutine])
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Auto-resize textarea
+  const handleAgentSelect = async (agentId: string | null) => {
+    setActiveAgentId(agentId)
+    if (sessionId !== 'new') {
+      // Update session explicitly
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, agentId: agentId || null, message: "Switching agent..." })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setMessages(prev => [...prev, {
+          id: `sw-${Date.now()}`,
+          session_id: sessionId,
+          role: 'assistant',
+          content: data.message.content,
+          actions: null,
+          attachments: null,
+          created_at: new Date().toISOString()
+        }])
+      }
+    }
+  }
+
+  async function handleSendInternal(text: string, routineId?: string) {
+    if (isLoading) return
+    setIsLoading(true)
+
+    // User message is optimistic
+    const optimistic: ChatMessage = {
+      id: `opt-${Date.now()}`,
+      session_id: sessionId,
+      role: 'user',
+      content: text,
+      actions: null,
+      created_at: new Date().toISOString()
+    }
+    setMessages((prev) => [...prev, optimistic])
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, sessionId, routineId, agentId: activeAgentId })
+      })
+      if (!res.ok) {
+// ... rest of error handling ...
+        let errorMessage = 'Failed to initiate ritual'
+        try {
+          const errorData = await res.json()
+          errorMessage = errorData.error || errorMessage
+        } catch {
+          errorMessage = `Server Error (${res.status})`
+        }
+        throw new Error(errorMessage)
+      }
+      const data = await res.json()
+
+      setMessages((prev) => [...prev, {
+        id: `mod-${Date.now()}`,
+        session_id: data.sessionId,
+        role: 'assistant',
+        content: data.message.content,
+        actions: data.message.actions,
+        created_at: new Date().toISOString()
+      }])
+
+      if (data.sessionId !== sessionId) {
+        router.replace(`/chat/${data.sessionId}${routineId ? `?routine=${routineId}` : ''}`, { scroll: false })
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
@@ -106,185 +156,299 @@ export function ChatInterface({ initialMessages, sessionId }: Props): React.Reac
     el.style.height = Math.min(el.scrollHeight, maxHeight) + 'px'
   }, [input])
 
-  const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-      const files = Array.from(e.target.files ?? [])
-      if (files.length === 0) return
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
 
-      // Client-side MIME guard — provides early UX feedback before server rejects
-      const disallowed = files.find((f) => !isAllowedMimeType(f.type))
-      if (disallowed) {
-        setError(`File type not supported: ${disallowed.type}`)
-        if (fileInputRef.current) fileInputRef.current.value = ''
-        return
-      }
+    const disallowed = files.find((f) => !isAllowedMimeType(f.type))
+    if (disallowed) {
+      setError(`File type not supported: ${disallowed.type}`)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
 
-      const converted = await Promise.all(
-        files.map(async (file): Promise<AttachedFile> => {
-          const base64 = await fileToBase64(file)
-          const attachment: ChatAttachment = {
-            type: resolveAttachmentType(file.type),
+    const converted = await Promise.all(
+      files.map(async (file): Promise<AttachedFile> => {
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve((reader.result as string).split(',')[1])
+          reader.readAsDataURL(file)
+        })
+        return {
+          file,
+          attachment: {
+            type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('audio/') ? 'audio' : 'file',
             base64,
             mimeType: file.type,
-            filename: file.name,
+            filename: file.name
           }
-          return { file, attachment }
-        })
-      )
+        }
+      })
+    )
 
-      setAttachedFiles((prev) => [...prev, ...converted])
-      // Reset input so same file can be re-selected
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    },
-    []
-  )
+    setAttachedFiles((prev) => [...prev, ...converted])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }, [])
 
-  function removeAttachment(index: number): void {
-    setAttachedFiles((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const trimmed = input.trim()
     if (!trimmed && attachedFiles.length === 0) return
     if (isLoading) return
 
-    const optimistic = buildOptimisticMessage(trimmed || '[Attachment]')
+    const optimistic: ChatMessage = {
+      id: `opt-${Date.now()}`,
+      session_id: sessionId,
+      role: 'user',
+      content: trimmed || (attachedFiles.length > 0 ? '' : '[Empty]'),
+      actions: null,
+      attachments: attachedFiles.map(af => af.attachment),
+      created_at: new Date().toISOString()
+    }
+
     setMessages((prev) => [...prev, optimistic])
     setInput('')
     setAttachedFiles([])
-    setError(null)
     setIsLoading(true)
 
     try {
-      const body = {
-        message: trimmed || '(see attachment)',
-        sessionId,
-        attachments: attachedFiles.map((af) => af.attachment),
-      }
-
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          message: trimmed,
+          sessionId,
+          agentId: activeAgentId,
+          attachments: attachedFiles.map(af => af.attachment)
+        })
       })
 
       if (!res.ok) {
-        const errData = (await res.json()) as { error?: string }
-        throw new Error(errData.error ?? `Request failed: ${res.status}`)
+        let errorMessage = 'Failed to send message'
+        try {
+          const errorData = await res.json()
+          errorMessage = errorData.error || errorMessage
+        } catch {
+          errorMessage = `Server Error (${res.status})`
+        }
+        throw new Error(errorMessage)
       }
 
-      const data = (await res.json()) as ChatApiResponse
-      const modelMsg = buildModelMessage(data.message, data.sessionId)
-      setMessages((prev) => [...prev, modelMsg])
+      const data = await res.json()
+      setMessages((prev) => [...prev, {
+        id: `mod-${Date.now()}`,
+        session_id: data.sessionId,
+        role: 'assistant',
+        content: data.message.content,
+        actions: data.message.actions,
+        attachments: data.message.attachments || null,
+        created_at: new Date().toISOString()
+      }])
 
-      // If this was a new session, navigate to the persisted sessionId
+      setAttachedFiles([]) // Clear attachments after success
+
+      // Update session state (routine progress etc.)
+      const sessRes = await fetch(`/api/chat/sessions/${data.sessionId}`)
+      if (sessRes.ok) {
+        const nextSession = await sessRes.json()
+        setSession(nextSession)
+
+        if (nextSession.active_routine_id) {
+          const routRes = await fetch(`/api/routines/${nextSession.active_routine_id}`)
+          if (routRes.ok) setCurrentRoutine(await routRes.json())
+        } else {
+          setCurrentRoutine(null)
+        }
+      }
+
       if (data.sessionId !== sessionId) {
         router.push(`/chat/${data.sessionId}`)
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to send message')
-      // Remove the optimistic message on failure
-      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id))
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
     } finally {
       setIsLoading(false)
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      const form = e.currentTarget.closest('form')
-      if (form) form.requestSubmit()
-    }
-  }
+  const activeAgent = agents.find(a => a.id === activeAgentId)
 
   return (
-    <div className="flex h-full flex-col" data-testid="chat-interface">
-      {/* Message list */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 && (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-textMuted">Send a message to get started.</p>
+    <div className="relative flex h-full flex-col bg-background text-foreground">
+      {/* Dynamic Header */}
+      <div className="bg-card/60 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-6 py-3">
+        <div className="flex items-center gap-3">
+          <div className={`flex h-10 w-10 items-center justify-center rounded-2xl transition-all duration-300 ${
+            currentRoutine
+              ? 'bg-nutrition/10 shadow-[0_0_16px_rgba(16,185,129,0.2)]'
+              : activeAgent
+              ? 'bg-primary/10 shadow-[0_0_16px_rgba(168,85,247,0.2)]'
+              : 'bg-white/[0.03]'
+          }`}>
+            {activeAgent
+              ? <Zap className="h-5 w-5 text-primary" />
+              : <Bot className="h-5 w-5 text-muted-foreground/60" />
+            }
+          </div>
+          <div>
+            <h2 className="text-sm font-black tracking-tight text-foreground">
+              {currentRoutine ? currentRoutine.name : activeAgent ? activeAgent.name : 'YAHA Assistant'}
+            </h2>
+            <div className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest ${
+              currentRoutine ? 'text-nutrition' : activeAgent ? 'text-primary' : 'text-muted-foreground/40'
+            }`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${
+                currentRoutine ? 'bg-nutrition animate-pulse' : activeAgent ? 'bg-primary animate-pulse' : 'bg-muted-foreground/20'
+              }`} />
+              {currentRoutine ? 'Ritual Active' : activeAgent ? 'Agent Active' : 'Neutral Protocol'}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {activeAgentId ? (
+            <div className="rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-primary shadow-[0_0_12px_rgba(168,85,247,0.15)]">
+              Persistent Mode
+            </div>
+          ) : (
+            <div className="rounded-full bg-white/[0.03] border border-white/[0.06] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground/30">
+              Temporary Mode
+            </div>
+          )}
+
+          {session?.active_routine_id && (
+            <div className="hidden items-center gap-2 rounded-2xl bg-nutrition/5 border border-nutrition/20 pl-3 pr-2 py-1.5 md:flex shadow-[0_0_12px_rgba(16,185,129,0.1)]">
+              <span className="text-[10px] font-black text-nutrition/70 uppercase tracking-widest truncate max-w-[100px]">
+                {currentRoutine?.name || 'Ritual'}
+              </span>
+              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-nutrition text-black">
+                <span className="text-[9px] font-black">{session.current_step_index + 1}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-10 space-y-6 lg:px-12">
+        {error && (
+          <div className="mb-6 flex items-center justify-between rounded-2xl bg-red-500/[0.08] border border-red-500/20 px-4 py-3 text-sm text-red-300 animate-in slide-in-from-top-2 backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <Zap className="h-4 w-4 text-red-500 shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button type="button" onClick={() => setError(null)} className="ml-3 shrink-0 text-red-500/50 hover:text-red-400 transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {messages.length === 0 && !isLoading && (
+          <div className="flex flex-col items-center justify-center gap-5 py-24 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-nutrition/20 via-primary/10 to-transparent border border-white/5 shadow-[0_0_40px_rgba(16,185,129,0.15)]">
+              <Bot className="h-9 w-9 text-nutrition/80" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-base font-black tracking-widest uppercase text-foreground/80">YAHA Assistant</p>
+              <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">Log health data, start a ritual, or ask anything about your wellbeing.</p>
+            </div>
           </div>
         )}
 
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex flex-col gap-2 ${
-              message.role === 'user' ? 'items-end' : 'items-start'
+            className={`flex w-full animate-in fade-in slide-in-from-bottom-3 duration-500 ${
+              message.role === 'user' ? 'justify-end' : 'justify-start'
             }`}
-            data-testid={`message-${message.role}`}
           >
-            <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed text-textPrimary ${
-                message.role === 'user'
-                  ? 'rounded-tr-sm bg-surfaceHighlight'
-                  : 'rounded-tl-sm bg-surface border border-border'
-              }`}
-            >
-              {message.content}
-            </div>
-
-            {message.actions && message.actions.length > 0 && (
-              <div className="w-full max-w-sm space-y-2">
-                {message.actions.map((card, idx) => (
-                  <ActionCard key={`${message.id}-action-${idx}`} card={card} />
-                ))}
+            {message.role === 'assistant' && (
+              <div className="mr-2.5 mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white/[0.04] border border-white/5">
+                <Bot className="h-3.5 w-3.5 text-muted-foreground/60" />
               </div>
             )}
+
+            <div className={`flex max-w-[82%] flex-col gap-3 lg:max-w-[68%] ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
+              <div
+                className={`rounded-3xl px-5 py-3.5 text-sm leading-relaxed ${
+                  message.role === 'user'
+                    ? 'bg-gradient-to-br from-nutrition/90 to-nutrition/70 text-black font-medium shadow-[0_4px_24px_rgba(16,185,129,0.25)] rounded-br-lg'
+                    : 'bg-white/[0.03] backdrop-blur-md border border-white/[0.06] text-foreground rounded-bl-lg shadow-[0_4px_24px_rgba(0,0,0,0.4)]'
+                }`}
+              >
+                <MarkdownText content={message.content.replace(/```json\s*[\s\S]*?```/g, '').trim()} />
+              </div>
+
+              {/* Attachments Display */}
+              {message.attachments && message.attachments.length > 0 && (
+                <div className={`flex flex-wrap gap-2 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {message.attachments.map((attachment, i: number) => {
+                    const at = attachment as ChatAttachment
+                    if (at.type === 'image') {
+                      return (
+                        <div key={i} className="relative group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+                          <img
+                            src={`data:${at.mimeType};base64,${at.base64}`}
+                            alt={at.filename || 'Attachment'}
+                            className="max-h-60 w-auto object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                          />
+                        </div>
+                      )
+                    }
+                    return (
+                      <div key={i} className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-xs font-bold text-muted-foreground shadow-md">
+                        <Paperclip className="h-3 w-3 text-muted-foreground/60" />
+                        <span className="max-w-[150px] truncate">{at.filename || 'File'}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {message.actions && message.actions.length > 0 && (
+                <div className="mt-1 w-full space-y-3">
+                  {message.actions.map((card, idx) => (
+                    <ActionCard key={idx} card={card} />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ))}
 
         {isLoading && (
-          <div className="flex items-start" data-testid="loading-indicator">
-            <div className="rounded-2xl rounded-tl-sm bg-surface border border-border px-4 py-2.5">
-              <span className="text-xs text-textMuted">Thinking...</span>
+          <div className="flex items-center gap-3 ml-2 animate-in fade-in duration-300">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white/[0.04] border border-white/5">
+              <Bot className="h-3.5 w-3.5 text-muted-foreground/60" />
+            </div>
+            <div className="flex items-center gap-1.5 rounded-3xl rounded-bl-lg bg-white/[0.03] border border-white/[0.06] px-5 py-3.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-nutrition/60 animate-bounce [animation-delay:0ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-nutrition/60 animate-bounce [animation-delay:150ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-nutrition/60 animate-bounce [animation-delay:300ms]" />
             </div>
           </div>
         )}
 
-        <div ref={bottomRef} />
+        <div ref={bottomRef} className="h-4" />
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="mx-4 mb-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-400">
-          {error}
+      {/* Active Ritual Banner */}
+      {session?.active_routine_id && (
+        <div className="mx-6 mb-4 flex items-center gap-4 rounded-3xl bg-nutrition/[0.06] border border-nutrition/20 p-4 animate-in slide-in-from-bottom-5 backdrop-blur-sm shadow-[0_0_20px_rgba(16,185,129,0.08)]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-nutrition/20 shadow-[0_0_16px_rgba(16,185,129,0.3)]">
+            <CheckCircle2 className="h-5 w-5 text-nutrition" />
+          </div>
+          <div className="flex-1">
+            <p className="text-[10px] font-black uppercase tracking-widest text-nutrition/70">Active Ritual</p>
+            <h4 className="text-sm font-black text-foreground">Step {session.current_step_index + 1} In Progress</h4>
+          </div>
+          <ChevronRight className="h-5 w-5 text-muted-foreground/40" />
         </div>
       )}
 
-      {/* Attachment chips */}
-      {attachedFiles.length > 0 && (
-        <div className="mx-4 mb-2 flex flex-wrap gap-2" data-testid="attachment-chips">
-          {attachedFiles.map((af, idx) => (
-            <div
-              key={idx}
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-surfaceHighlight px-2 py-1 text-xs text-textMuted"
-            >
-              <span className="max-w-[120px] truncate">{af.file.name}</span>
-              <button
-                type="button"
-                onClick={() => removeAttachment(idx)}
-                className="text-textMuted hover:text-textPrimary"
-                aria-label={`Remove ${af.file.name}`}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Input area */}
-      <form
-        onSubmit={handleSubmit}
-        className="border-t border-border bg-surface p-4"
-        data-testid="chat-form"
-      >
-        <div className="flex items-end gap-2">
-          {/* Hidden file input */}
+      {/* Input */}
+      <div className="bg-card/60 backdrop-blur-xl border-t border-white/5 sticky bottom-0 p-4 md:p-5 lg:px-12">
+        <form onSubmit={handleSubmit} className="relative mx-auto max-w-4xl">
           <input
             ref={fileInputRef}
             type="file"
@@ -292,46 +456,107 @@ export function ChatInterface({ initialMessages, sessionId }: Props): React.Reac
             multiple
             onChange={handleFileChange}
             className="hidden"
-            data-testid="file-input"
-            aria-label="Attach files"
           />
 
-          {/* Attach button */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-shrink-0 rounded-lg border border-border p-2 text-textMuted transition-colors hover:bg-surfaceHighlight hover:text-textPrimary"
-            aria-label="Attach file"
-            data-testid="attach-button"
-          >
-            <Paperclip className="h-4 w-4" />
-          </button>
+          <div className="relative flex items-end gap-2 rounded-[28px] bg-white/[0.03] border border-white/[0.08] p-2 pl-3 transition-all duration-300 focus-within:border-nutrition/30 focus-within:bg-white/[0.05] focus-within:shadow-[0_0_24px_rgba(16,185,129,0.08)]">
+            <div className="mb-1 flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground/50 transition-all duration-200 hover:bg-white/[0.06] hover:text-muted-foreground"
+              >
+                <Paperclip className="h-4 w-4" />
+              </button>
 
-          {/* Text input */}
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Message YAHA... (Enter to send, Shift+Enter for newline)"
-            rows={1}
-            className="flex-1 resize-none rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-textPrimary placeholder-textMuted/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            data-testid="message-input"
-            aria-label="Message input"
-          />
+              <AgentSelector
+                agents={agents || []}
+                activeAgentId={activeAgentId}
+                onSelect={handleAgentSelect}
+              />
+            </div>
 
-          {/* Send button */}
-          <button
-            type="submit"
-            disabled={isLoading || (!input.trim() && attachedFiles.length === 0)}
-            className="flex-shrink-0 rounded-lg bg-primary p-2 text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
-            aria-label="Send message"
-            data-testid="send-button"
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        </div>
-      </form>
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  e.currentTarget.form?.requestSubmit()
+                }
+              }}
+              placeholder="Speak to YAHA..."
+              className="flex-1 bg-transparent py-2.5 text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none md:text-base resize-none"
+            />
+
+            <button
+              type="submit"
+              disabled={isLoading || (!input.trim() && attachedFiles.length === 0)}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-nutrition text-black transition-all duration-300 hover:scale-105 hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] active:scale-95 disabled:opacity-30 disabled:shadow-none disabled:scale-100"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+
+          {attachedFiles.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {attachedFiles.map((af, i) => (
+                <div key={i} className="flex items-center gap-2 rounded-full border border-nutrition/20 bg-nutrition/[0.06] py-1.5 pl-3 pr-2 text-[11px] font-bold text-nutrition/80 transition-all duration-200">
+                  <Paperclip className="h-3 w-3 shrink-0" />
+                  <span className="max-w-[150px] truncate">{af.file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachedFiles(f => f.filter((_, idx) => idx !== i))}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-nutrition/20 hover:text-nutrition transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </form>
+      </div>
     </div>
   )
+}
+
+function MarkdownText({ content }: { content: string }) {
+  // Simple markdown-lite renderer for a "premium" feel without a heavy library
+  const lines = content.split('\n')
+
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, i) => {
+        // Handle Bullet Points
+        if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+          const text = line.trim().substring(2)
+          return (
+            <div key={i} className="flex gap-2.5 pl-1">
+              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-nutrition/60" />
+              <span className="leading-relaxed">{renderBold(text)}</span>
+            </div>
+          )
+        }
+
+        // Regular Paragraphs
+        return <p key={i} className="leading-relaxed">{renderBold(line)}</p>
+      })}
+    </div>
+  )
+}
+
+function renderBold(text: string) {
+  const parts = text.split(/(\*\*.*?\*\*)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return (
+        <strong key={i} className="font-black text-white">
+          {part.slice(2, -2)}
+        </strong>
+      )
+    }
+    return part
+  })
 }

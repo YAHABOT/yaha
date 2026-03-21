@@ -77,36 +77,30 @@ describe('buildHealthSystemPrompt', () => {
 
 describe('buildRoutineSystemPrompt', () => {
   it('returns a string containing the routine name', () => {
-    const result = buildRoutineSystemPrompt(FAKE_ROUTINE)
+    const result = buildRoutineSystemPrompt(FAKE_ROUTINE, [FAKE_TRACKER])
     expect(result).toContain('Morning Check-In')
   })
 
-  it('returns a string containing the trigger phrase', () => {
-    const result = buildRoutineSystemPrompt(FAKE_ROUTINE)
-    expect(result).toContain('start day')
-  })
-
   it('returns a string containing each step tracker name', () => {
-    const result = buildRoutineSystemPrompt(FAKE_ROUTINE)
+    const result = buildRoutineSystemPrompt(FAKE_ROUTINE, [FAKE_TRACKER])
     expect(result).toContain('Sleep')
     expect(result).toContain('Mood')
   })
 
   it('numbers each step sequentially starting at 1', () => {
-    const result = buildRoutineSystemPrompt(FAKE_ROUTINE)
-    expect(result).toContain('Step 1:')
-    expect(result).toContain('Step 2:')
+    const result = buildRoutineSystemPrompt(FAKE_ROUTINE, [FAKE_TRACKER])
+    expect(result).toContain('CURRENT STEP: 1 of 2')
   })
 
   it('lists target fields for each step', () => {
-    const result = buildRoutineSystemPrompt(FAKE_ROUTINE)
+    const result = buildRoutineSystemPrompt(FAKE_ROUTINE, [FAKE_TRACKER])
     expect(result).toContain('fld_hours')
     expect(result).toContain('fld_quality')
     expect(result).toContain('fld_rating')
   })
 
   it('returns a string (not null or undefined)', () => {
-    const result = buildRoutineSystemPrompt(FAKE_ROUTINE)
+    const result = buildRoutineSystemPrompt(FAKE_ROUTINE, [FAKE_TRACKER])
     expect(typeof result).toBe('string')
     expect(result.length).toBeGreaterThan(0)
   })
@@ -116,13 +110,12 @@ describe('buildRoutineSystemPrompt', () => {
       ...FAKE_ROUTINE,
       steps: [FAKE_ROUTINE.steps[0]],
     }
-    const result = buildRoutineSystemPrompt(singleStepRoutine)
-    expect(result).toContain('Step 1:')
-    expect(result).not.toContain('Step 2:')
+    const result = buildRoutineSystemPrompt(singleStepRoutine, [FAKE_TRACKER])
+    expect(result).toContain('CURRENT STEP: 1 of 1')
   })
 
   it('handles a routine with no steps without throwing', () => {
     const emptyRoutine: Routine = { ...FAKE_ROUTINE, steps: [] }
-    expect(() => buildRoutineSystemPrompt(emptyRoutine)).not.toThrow()
+    expect(() => buildRoutineSystemPrompt(emptyRoutine, [])).not.toThrow()
   })
 })

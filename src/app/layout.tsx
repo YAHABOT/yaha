@@ -34,7 +34,7 @@ export default function RootLayout({
 }>): React.ReactElement {
   return (
     <html lang="en" className={inter.variable}>
-      <body className="bg-background text-textPrimary min-h-screen antialiased font-sans">
+      <body className="bg-background text-foreground min-h-screen antialiased font-sans">
         {children}
       </body>
     </html>

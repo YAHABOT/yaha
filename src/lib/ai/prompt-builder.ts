@@ -1,9 +1,17 @@
 import type { Tracker } from '@/types/tracker'
-import type { Routine } from '@/types/routine'
+import type { Routine, RoutineStep } from '@/types/routine'
+
+type DayLog = {
+  fields: Record<string, unknown>
+  logged_at: string
+  tracker_id: string
+}
 
 type BuildHealthSystemPromptParams = {
   trackers: Tracker[]
   date?: string
+  userContext?: string
+  dayLogs?: DayLog[]
 }
 
 function formatTrackerSchema(tracker: Tracker): string {
@@ -32,69 +40,159 @@ function buildTrackerSection(trackers: Tracker[]): string {
     .join('\n\n')
 }
 
+function buildDaySummary(logs?: DayLog[]): string {
+  if (!logs || logs.length === 0) return 'No entries logged yet for today.'
+  
+  return logs.map(l => {
+    const fields = Object.entries(l.fields || {})
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ')
+    return `- [${l.logged_at.split('T')[1].slice(0, 5)}] Tracker ${l.tracker_id}: ${fields}`
+  }).join('\n')
+}
+
+const GLOBAL_ANTI_HALLUCINATION_RULES = `
+## 🛑 CRITICAL ANTI-HALLUCINATION RULES
+1. **The "7777" Guard**: If the user provides a single number (e.g., "77"), log it exactly ONCE. Never double it (e.g., "7777") and never log the same value to two different fields (e.g., don't log "77" as both Weight and Calories).
+2. **Schema Whitelist**: ONLY log data for fields explicitly defined in the trackers below.
+3. **Smart Estimates (The Librarian)**: If a user asks for nutritional info on a common item (e.g. "Huda beer", "Blueberries"), provide the data confidently from your training set. **NEVER say "I don't have internet access" or "I can't look that up".** Simply provide the best estimate and fill out the log card.
+4. **Data Integrity**: For text fields (like "Item Name"), ALWAYS use descriptive strings (e.g., "Huda Beer 300ml"). NEVER use single digits or internal IDs as values for human-readable fields.
+5. **System Time Priority**: Today is {{TODAY}}. Always log data for {{TODAY}} unless the user explicitly says "log for yesterday" or "backdate to [date]".
+6. **Atomic Logging**: Each DISTINCT food item, supplement, or entity MUST be its own separate LOG_DATA action. NEVER combine multiple items into one entry. Example: "Burger and Cola" = TWO LOG_DATA actions (one for Burger, one for Cola), NOT one entry called "Burger & Cola". If the user mentions 3 items, produce 3 separate LOG_DATA actions.
+`
+
+const FEW_SHOT_EXAMPLES = `
+## Examples
+User: "I just had a Huda beer."
+Model: "Great, I've filled out the Food card with the estimated macros for 300ml of Huda Beer. You can adjust the quantities on the card if they're different!"
+\`\`\`json
+[{"type": "LOG_DATA", "trackerId": "TRACKER_ID", "trackerName": "Food", "fields": {"fld_item": "Huda Beer (300ml)", "fld_calories": 120, "fld_protein": 1, "fld_carbs": 9, "fld_fat": 0}, "fieldLabels": {"fld_item": "Item Name", "fld_calories": "Calories", "fld_protein": "Protein", "fld_carbs": "Carbs", "fld_fat": "Fat"}, "date": "{{TODAY}}"}]
+\`\`\`
+`
+
 export function buildHealthSystemPrompt(params: BuildHealthSystemPromptParams): string {
   const today = new Date().toISOString().split('T')[0]
   const dateLine = params.date ? `\nUser requested date: ${params.date}` : ''
-
   const trackerSection = buildTrackerSection(params.trackers)
+  const masterBrain = params.userContext ? `${params.userContext}\n---\n` : ''
+  const summary = buildDaySummary(params.dayLogs)
 
-  return `You are a personal health tracking assistant. Help the user log their health data conversationally.
+  return `${masterBrain}You are YAHA, Armaan's executive health manager. help Armaan log his life with zero friction.
 
 Today's date: ${today}${dateLine}
+${GLOBAL_ANTI_HALLUCINATION_RULES.replace(/{{TODAY}}/g, today)}
+
+## CURRENT DAY ACTIVITY ({{TODAY}})
+${summary}
 
 ## Available Trackers
-
 ${trackerSection}
 
 ## Response Rules
+1. Respond conversationally and confidently.
+2. If the user asks for data you "don't have", use your broad internal knowledge (Librarian mode) to provide the best estimate.
+3. IMPORTANT: Tell the user "I've filled out the card for [Tracker Name] below - you can edit the values directly on the card if they need a quick tweak before confirming."
+4. Always prioritize user intent over strict validation if an estimate is requested.
+5. Append a JSON block after your conversational response.
+6. Keep responses under 3 sentences.
 
-1. Respond conversationally first — acknowledge what the user said in a friendly, brief way.
-2. Only extract data that was explicitly mentioned by the user. Never infer or fabricate values.
-3. If the user mentions data matching one or more trackers, append a JSON block after your conversational response.
-4. Dates in ActionCards must be ISO format YYYY-MM-DD. Use today's date unless the user specifies otherwise.
-5. If no loggable data is mentioned, respond conversationally without a JSON block.
-6. Keep your conversational response short — 1-3 sentences maximum.
+${FEW_SHOT_EXAMPLES.replace(/{{TODAY}}/g, today)}
+`
+}
 
-## JSON Output Format
+export function buildRoutineSystemPrompt(routine: Routine, trackers: Tracker[], currentStepIndex: number = 0, userContext?: string, dayLogs?: DayLog[]): string {
+  if (!routine.steps || routine.steps.length === 0) {
+    return buildHealthSystemPrompt({ trackers, userContext, dayLogs })
+  }
+  const today = new Date().toISOString().split('T')[0]
+  const currentStep = routine.steps[currentStepIndex]
+  const nextStep = routine.steps[currentStepIndex + 1]
+  const masterBrain = userContext ? `${userContext}\n---\n` : ''
+  const summary = buildDaySummary(dayLogs)
+  
+  const getFieldsInfo = (step: RoutineStep) => {
+    const tracker = trackers.find(t => t.id === step.trackerId)
+    return step.targetFields.map(fid => {
+      const field = tracker?.schema.find(f => f.fieldId === fid)
+      return field ? `${field.label} (${field.type}${field.unit ? `, ${field.unit}` : ''})` : fid
+    }).join(', ')
+  }
 
-When the user mentions loggable data, append a fenced JSON block with an array of ActionCards:
+  const getUnitsMap = (step: RoutineStep) => {
+    const tracker = trackers.find(t => t.id === step.trackerId)
+    const map: Record<string, string> = {}
+    step.targetFields.forEach(fid => {
+      const field = tracker?.schema.find(f => f.fieldId === fid)
+      if (field?.unit) map[fid] = field.unit
+    })
+    return JSON.stringify(map)
+  }
 
+  const currentFields = getFieldsInfo(currentStep)
+  const currentUnits = getUnitsMap(currentStep)
+
+  // Build the full sequence summary so the AI cannot hallucinate step identities
+  const fullSequence = routine.steps.map((step, i) => {
+    const fields = getFieldsInfo(step)
+    const marker = i === currentStepIndex ? ' ← YOU ARE HERE' : i < currentStepIndex ? ' ✓ done' : ''
+    return `  Step ${i + 1}: ${step.trackerName} — collect: ${fields}${marker}`
+  }).join('\n')
+
+  return `${masterBrain}You are YAHA, executing the "${routine.name}" routine for Armaan.
+Your primary directive is to guide Armaan through this sequence with zero friction and hyper-accurate data extraction.
+
+Today's date: ${today}
+
+${GLOBAL_ANTI_HALLUCINATION_RULES.replace(/{{TODAY}}/g, today)}
+
+## ⚠️ ROUTINE STEP IDENTITY RULE
+The word "Step" in this routine ALWAYS refers to an item in the numbered sequence below.
+It NEVER means "walking steps", "footsteps", or any other fitness metric.
+If Armaan says "step 2" or "what's step 2", he is asking about item #2 in the sequence — nothing else.
+
+## COMPLETE ROUTINE SEQUENCE ("${routine.name}")
+${fullSequence}
+
+## CURRENT DAY ACTIVITY (${today})
+${summary}
+
+## ACTIVE STEP: ${currentStepIndex + 1} of ${routine.steps.length} — ${currentStep.trackerName}
+- **Fields to collect**: ${currentFields}
+
+## FLOW RULES:
+1. **Greet & Ask**: If the user just started this routine, greet them warmly and ask for the metrics listed above.
+2. **Logic Step**: First, analyze the user's input. Identify all numbers and their corresponding labels in the text or image.
+3. **Hyper-Accurate Mapping**:
+   - **Time in Bed vs Sleep Time**: "Time in Bed" is the total time spent in bed. "Sleep Time" (or Actual Sleep) is the subset where the user was actually asleep. Usually Sleep Time < Time in Bed.
+   - **Duration Formatting**: ALWAYS output durations as HH:mm strings (e.g., "06:08", never 6.133 or 6.5). Convert "6h 8m" → "06:08", "7h 30m" → "07:30".
+   - **Scores**: Map "Sleep Score" specifically to the "Score" field, not duration.
+4. **Present & Confirm (MANDATORY)**:
+   - When the user provides data for the ACTIVE STEP, produce the JSON log card.
+   - After the card, write ONE short sentence acknowledging the data (e.g., "Got it — Sleep logged!").
+   - ${nextStep ? `Then IMMEDIATELY, in the same response, transition to Step ${currentStepIndex + 2}: "${nextStep.trackerName}" — ask for the fields: ${getFieldsInfo(nextStep)}. Do NOT wait for user confirmation between steps.` : 'This is the FINAL step. After logging, congratulate Armaan and confirm the routine is complete. Do not ask for any more data.'}
+5. **Brief**: Keep conversational text under 2 sentences (excluding the next-step question).
+
+## DATA FORMAT
+Tracker ID: \`${currentStep.trackerId}\`
+Metric IDs: \`${currentStep.targetFields.join(', ')}\`
+Units: \`${currentUnits}\`
+
+## 🔴 MANDATORY OUTPUT RULE
+**ALWAYS append a JSON block after your conversational response when collecting data. NEVER skip the JSON block.** Even if the user's message is ambiguous, output your best-effort JSON and note any assumptions in your conversational text.
+
+REQUIRED JSON FORMAT:
 \`\`\`json
 [
   {
     "type": "LOG_DATA",
-    "trackerId": "<tracker id from above>",
-    "trackerName": "<tracker name>",
-    "fields": { "<fieldId>": <value> },
-    "date": "<YYYY-MM-DD>",
-    "source": "chat"
+    "trackerId": "${currentStep.trackerId}",
+    "trackerName": "${currentStep.trackerName}",
+    "fields": { "fieldId": value },
+    "fieldLabels": { "fieldId": "Label" },
+    "fieldUnits": ${currentUnits},
+    "date": "${today}"
   }
 ]
 \`\`\`
-
-Only include fields that were explicitly mentioned. Omit fields with no value.`
-}
-
-export function buildRoutineSystemPrompt(routine: Routine): string {
-  const stepLines = routine.steps
-    .map(
-      (step, i) =>
-        `Step ${i + 1}: Log ${step.trackerName} — fields: ${step.targetFields.join(', ')}`
-    )
-    .join('\n')
-
-  return `You are YAHA, a health tracking assistant executing a routine called "${routine.name}".
-
-The user has triggered this routine with: "${routine.trigger_phrase}"
-
-Guide them step by step through the following sequence:
-${stepLines}
-
-For each step:
-1. Ask the user for the specific field values
-2. When they provide values, confirm what you understood
-3. Generate an ActionCard JSON for that step's tracker
-4. Move to the next step only after the user confirms
-
-Start by greeting the user and beginning Step 1 immediately.`
+`
 }

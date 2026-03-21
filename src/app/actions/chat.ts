@@ -21,7 +21,13 @@ export async function confirmLogAction(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(card.date)) {
       return { error: 'Invalid date format — expected YYYY-MM-DD' }
     }
-    const loggedAt = new Date(card.date + 'T00:00:00').toISOString()
+    // Use the actual confirmation time (wall-clock) so entries are not stuck at midnight UTC.
+    // Only use card.date for the calendar date — the time component comes from right now.
+    const now = new Date()
+    const nowDateStr = now.toISOString().split('T')[0]
+    const loggedAt = card.date === nowDateStr
+      ? now.toISOString()                           // today: use exact confirmation time
+      : new Date(card.date + 'T12:00:00Z').toISOString() // backdated: use noon UTC to avoid day-boundary issues
 
     const { error } = await supabase
       .from('tracker_logs')
@@ -41,5 +47,27 @@ export async function confirmLogAction(
     return { success: true }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Failed to confirm log' }
+  }
+}
+
+export async function deleteSessionAction(id: string): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const { deleteSession } = await import('@/lib/db/chat')
+    await deleteSession(id)
+    revalidatePath('/chat')
+    return { success: true }
+  } catch (e: unknown) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+export async function renameSessionAction(id: string, title: string): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const { updateSession } = await import('@/lib/db/chat')
+    await updateSession(id, { title })
+    revalidatePath('/chat')
+    return { success: true }
+  } catch (e: unknown) {
+    return { error: e instanceof Error ? e.message : String(e) }
   }
 }

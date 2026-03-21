@@ -126,6 +126,8 @@ Use Settings page for data entry during development — no onboarding required y
 | Telegram webhook + message handling | `.claude/skills/telegram-bot/SKILL.md` |
 | Morning / evening routine flows | `.claude/skills/daily-routine/SKILL.md` |
 | Dashboard widget management | `.claude/skills/dashboard-builder/SKILL.md` |
+| Premium UI/UX Design System | `.claude/skills/ui-ux-pro-max/SKILL.md` |
+
 
 ---
 

@@ -1,8 +1,8 @@
-'use client' // Needed: manages schema field state, add/remove/edit interactions
+'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus } from 'lucide-react'
+import { Plus, ChevronLeft, Target, Save, X } from 'lucide-react'
 import { updateTrackerAction, deleteTrackerAction } from '@/app/actions/trackers'
 import { SchemaFieldRow } from '@/components/trackers/SchemaFieldRow'
 import type { SchemaField, Tracker } from '@/types/tracker'
@@ -46,6 +46,24 @@ export function SchemaEditor({ tracker }: Props): React.ReactElement {
     setSchema((prev) => prev.filter((_, i) => i !== index))
   }
 
+  function handleMoveUp(index: number): void {
+    if (index === 0) return
+    setSchema(prev => {
+      const next = [...prev]
+      ;[next[index - 1], next[index]] = [next[index], next[index - 1]]
+      return next
+    })
+  }
+
+  function handleMoveDown(index: number): void {
+    if (index === schema.length - 1) return
+    setSchema(prev => {
+      const next = [...prev]
+      ;[next[index], next[index + 1]] = [next[index + 1], next[index]]
+      return next
+    })
+  }
+
   async function handleSave(): Promise<void> {
     setError(null)
     setSaving(true)
@@ -58,6 +76,7 @@ export function SchemaEditor({ tracker }: Props): React.ReactElement {
         setError(result.error)
       } else {
         router.push('/trackers')
+        router.refresh()
       }
     } finally {
       setSaving(false)
@@ -75,6 +94,7 @@ export function SchemaEditor({ tracker }: Props): React.ReactElement {
         setError(result.error)
       } else {
         router.push('/trackers')
+        router.refresh()
       }
     } finally {
       setDeleting(false)
@@ -83,109 +103,156 @@ export function SchemaEditor({ tracker }: Props): React.ReactElement {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-2xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Back Button */}
+      <button
+        onClick={() => router.back()}
+        className="group flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-textMuted transition-colors hover:text-textPrimary"
+      >
+        <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+        Back to Trackers
+      </button>
+
+      <div className="space-y-1">
+        <h1 className="text-4xl font-black tracking-tight text-textPrimary">Edit Schema</h1>
+        <p className="text-sm text-textMuted/60">Define the internal structure and metrics for your tracker.</p>
+      </div>
+
       {error && (
-        <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-          {error}
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100 italic">
+          !! {error}
         </div>
       )}
 
-      {/* Tracker Info */}
-      <div className="flex items-center gap-3">
-        <span
-          className="inline-block h-4 w-4 rounded-full"
-          style={{ backgroundColor: tracker.color }}
-        />
-        <h2 className="text-lg font-semibold text-textPrimary">{tracker.name}</h2>
-        <span className="rounded-md bg-surfaceHighlight px-2 py-0.5 text-xs font-medium text-textMuted">
-          {tracker.type}
-        </span>
-      </div>
+      {/* Main Container */}
+      <div className="rounded-[40px] border border-white/5 bg-black/40 p-8 backdrop-blur-xl shadow-2xl overflow-hidden relative group/container">
+        {/* Glow effect */}
+        <div className="absolute -top-24 -right-24 h-48 w-48 blur-[100px] pointer-events-none opacity-10" style={{ backgroundColor: tracker.color }} />
+        
+        <div className="relative space-y-8">
+          {/* Header Status */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div 
+                className="flex h-14 w-14 items-center justify-center rounded-2xl shadow-inner transition-transform group-hover/container:scale-110 active:scale-95 duration-500"
+                style={{ 
+                  backgroundColor: `${tracker.color}15`, 
+                  border: `1px solid ${tracker.color}30`,
+                  boxShadow: `0 0 20px -5px ${tracker.color}40`
+                }}
+              >
+                <Target className="h-7 w-7" style={{ color: tracker.color }} />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black text-textPrimary">{tracker.name}</h2>
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-textMuted opacity-40">
+                  <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ backgroundColor: tracker.color }} />
+                  {tracker.id}
+                </div>
+              </div>
+            </div>
 
-      {/* Schema Fields */}
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <label className="text-sm text-textMuted">
-            Fields ({schema.length}/{MAX_SCHEMA_FIELDS})
-          </label>
-          <button
-            type="button"
-            onClick={handleAddField}
-            disabled={schema.length >= MAX_SCHEMA_FIELDS}
-            className="flex items-center gap-1 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-xs font-medium text-textPrimary transition-colors hover:bg-black/[0.06] disabled:opacity-40"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add Field
-          </button>
-        </div>
-
-        {schema.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-textMuted">
-            No fields yet. Add fields to define what data this tracker collects.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {schema.map((field, index) => (
-              <SchemaFieldRow
-                key={field.fieldId}
-                field={field}
-                onChange={(updated) => handleFieldChange(index, updated)}
-                onRemove={() => handleFieldRemove(index)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center justify-between border-t border-border pt-6">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save Schema'}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/trackers')}
-            className="rounded-lg bg-surfaceHighlight px-6 py-2.5 text-sm font-medium text-textMuted transition-colors hover:bg-black/[0.06] hover:text-textPrimary"
-          >
-            Cancel
-          </button>
-        </div>
-
-        {/* Delete */}
-        {showDeleteConfirm ? (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-red-400">Delete this tracker?</span>
             <button
               type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+              onClick={handleAddField}
+              disabled={schema.length >= MAX_SCHEMA_FIELDS}
+              className="flex items-center gap-2 rounded-2xl bg-white/5 border border-white/10 px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.1em] text-textPrimary transition-all hover:bg-white/10 active:scale-95 disabled:opacity-20 shadow-lg"
             >
-              {deleting ? 'Deleting...' : 'Confirm'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(false)}
-              className="rounded-lg bg-surfaceHighlight px-4 py-2 text-sm font-medium text-textMuted transition-colors hover:bg-black/[0.06]"
-            >
-              No
+              <Plus className="h-4 w-4 stroke-[3px]" />
+              Add Field
             </button>
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10"
-          >
-            Delete Tracker
-          </button>
-        )}
+
+          {/* Fields List */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-2">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-textMuted opacity-30">
+                Data Schema Map ({schema.length}/{MAX_SCHEMA_FIELDS})
+              </h3>
+            </div>
+
+            {schema.length === 0 ? (
+              <div className="rounded-[32px] border border-dashed border-white/10 p-12 text-center text-sm font-bold text-textMuted bg-white/[0.01]">
+                No active fields.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {schema.map((field, index) => (
+                  <SchemaFieldRow
+                    key={field.fieldId}
+                    field={field}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < schema.length - 1}
+                    onChange={(updated) => handleFieldChange(index, updated)}
+                    onRemove={() => handleFieldRemove(index)}
+                    onMoveUp={() => handleMoveUp(index)}
+                    onMoveDown={() => handleMoveDown(index)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer Actions */}
+          <div className="flex items-center justify-between border-t border-white/5 pt-8">
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-[20px] px-8 py-3.5 text-xs font-black uppercase tracking-widest text-background transition-all duration-300 hover:scale-105 active:scale-95 shadow-xl disabled:opacity-50"
+                style={{
+                  backgroundColor: tracker.color,
+                  boxShadow: `0 8px 32px -8px ${tracker.color}60`,
+                }}
+              >
+                {saving ? 'Syncing...' : (
+                  <>
+                    <Save className="h-4 w-4 stroke-[3px]" />
+                    Save Schema
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push('/trackers')}
+                className="text-xs font-black uppercase tracking-widest text-textMuted transition-colors hover:text-textPrimary px-4"
+              >
+                Cancel
+              </button>
+            </div>
+
+            {/* Delete Trigger */}
+            {showDeleteConfirm ? (
+              <div className="flex items-center gap-2 animate-in zoom-in-95 duration-200">
+                <span className="text-[10px] font-black uppercase tracking-widest text-red-500 mr-2">Are you sure?</span>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="rounded-xl bg-red-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-red-600 transition-colors"
+                >
+                  Confirm
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="p-2 text-textMuted hover:text-textPrimary transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="text-[10px] font-black uppercase tracking-widest text-red-500/50 transition-colors hover:text-red-500 px-4"
+              >
+                Delete Tracker
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

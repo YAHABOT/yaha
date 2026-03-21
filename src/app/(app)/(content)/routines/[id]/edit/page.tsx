@@ -3,7 +3,6 @@ import { ArrowLeft } from 'lucide-react'
 import { getRoutine } from '@/lib/db/routines'
 import { getTrackers } from '@/lib/db/trackers'
 import { RoutineForm } from '@/components/routines/RoutineForm'
-import { updateRoutineAction } from '@/app/actions/routines'
 
 type Props = {
   params: Promise<{ id: string }>
@@ -19,31 +18,40 @@ export default async function EditRoutinePage({ params }: Props) {
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to load routine'
     return (
-      <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-6 text-center">
-        <p className="text-sm text-red-400">{message}</p>
+      <div className="rounded-[32px] border border-red-500/20 bg-red-500/[0.06] backdrop-blur-md p-8 text-center">
+        <p className="text-sm font-bold text-red-400">{message}</p>
       </div>
     )
   }
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-6">
+      {/* Header */}
+      <div className="mb-8">
         <Link
           href="/routines"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm text-textMuted transition-colors hover:text-textPrimary"
+          className="mb-4 inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-widest text-textMuted transition-colors duration-200 hover:text-textPrimary"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-3.5 w-3.5" />
           Back to Routines
         </Link>
-        <h1 className="text-2xl font-bold text-textPrimary">Edit Routine</h1>
+        <h1 className="mt-3 text-3xl font-black tracking-tight text-textPrimary">
+          Edit Routine
+        </h1>
+        <p className="mt-1 text-xs font-medium text-textMuted opacity-50 uppercase tracking-wider">
+          Modify protocol configuration
+        </p>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-6">
-        <RoutineForm
-          trackers={trackers}
-          initialValues={routine}
-          onSubmit={updateRoutineAction.bind(null, id)}
-        />
+      {/* Glass form container */}
+      <div className="relative rounded-[32px] border border-white/5 bg-white/[0.02] backdrop-blur-md p-8 shadow-2xl overflow-hidden">
+        <div className="absolute -top-16 -right-16 h-40 w-40 bg-nutrition/5 blur-[100px] pointer-events-none" />
+        <div className="relative">
+          <RoutineForm
+            trackers={trackers}
+            initialValues={routine}
+          />
+        </div>
       </div>
     </div>
   )

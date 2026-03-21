@@ -4,7 +4,7 @@ import type { ChatSession, ChatMessage, CreateSessionInput, CreateMessageInput }
 const DEFAULT_SESSION_TITLE = 'New Chat'
 const DEFAULT_AI_CONTEXT_LIMIT = 20
 
-const SESSION_COLUMNS = 'id, user_id, title, updated_at'
+const SESSION_COLUMNS = 'id, user_id, title, active_routine_id, current_step_index, active_agent_id, updated_at'
 const MESSAGE_COLUMNS = 'id, session_id, role, content, actions, created_at'
 
 export async function getSessions(): Promise<ChatSession[]> {
@@ -58,7 +58,7 @@ export async function createSession(input?: CreateSessionInput): Promise<ChatSes
 
 export async function updateSession(
   id: string,
-  updates: { title?: string }
+  updates: { title?: string; active_agent_id?: string | null; active_routine_id?: string | null; current_step_index?: number }
 ): Promise<ChatSession> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()

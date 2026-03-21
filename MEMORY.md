@@ -7,10 +7,14 @@
 
 | Feature | Status | Agent Verdicts | Date |
 |---------|--------|----------------|------|
-| Tracker CRUD | TODO | — | — |
-| Multimodal Health Logging | TODO | — | — |
-| Daily Journal + Correlator | TODO | — | — |
-| Daily Routines | TODO | — | — |
+| Performance Optimization | DONE | PASS | 2026-03-13 |
+| Librarian Mode (AI Estimates) | DONE | PASS | 2026-03-13 |
+| Interactive Action Cards | DONE | PASS | 2026-03-13 |
+| Markdown Chat Renderer | DONE | PASS | 2026-03-13 |
+| Sleep Logic Fix | DONE | PASS | 2026-03-13 |
+| Tracker CRUD | IN-PROGRESS | — | — |
+| Daily Journal + Correlator | IN-PROGRESS | — | — |
+| Daily Routines | IN-PROGRESS | — | — |
 | Customizable Dashboard | TODO | — | — |
 | Multi-Session Chat | TODO | — | — |
 | Telegram Bot | TODO | — | — |

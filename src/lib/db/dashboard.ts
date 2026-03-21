@@ -1,11 +1,13 @@
 import { createServerClient } from '@/lib/supabase/server'
+import { getSafeUser } from '@/lib/supabase/auth'
 import type { Widget, CreateWidgetInput } from '@/types/widget'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const WIDGET_COLUMNS = 'id, user_id, type, label, tracker_id, field_id, correlation_id, days, position, color'
 
-export async function getWidgets(): Promise<Widget[]> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export async function getWidgets(supabaseClient?: SupabaseClient): Promise<Widget[]> {
+  const supabase = supabaseClient ?? await createServerClient()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { data, error } = await supabase
@@ -20,7 +22,7 @@ export async function getWidgets(): Promise<Widget[]> {
 
 export async function createWidget(input: CreateWidgetInput): Promise<Widget> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   // Determine next position (max + 1)
@@ -60,7 +62,7 @@ export async function updateWidget(
   data: Partial<CreateWidgetInput>
 ): Promise<Widget> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const updates: Record<string, unknown> = {}
@@ -91,7 +93,7 @@ export async function updateWidget(
 
 export async function deleteWidget(id: string): Promise<void> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { error } = await supabase
@@ -105,7 +107,7 @@ export async function deleteWidget(id: string): Promise<void> {
 
 export async function reorderWidgets(orderedIds: string[]): Promise<void> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   // Update each widget's position in sequence

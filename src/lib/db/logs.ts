@@ -1,5 +1,7 @@
 import { createServerClient } from '@/lib/supabase/server'
+import { getSafeUser } from '@/lib/supabase/auth'
 import type { TrackerLog, CreateLogInput, UpdateLogInput } from '@/types/log'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const DEFAULT_LIMIT = 50
 const DEFAULT_SOURCE = 'manual'
@@ -15,7 +17,7 @@ type GetLogsOptions = {
 
 export async function createLog(input: CreateLogInput): Promise<TrackerLog> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { data, error } = await supabase
@@ -39,7 +41,7 @@ export async function getLogs(
   options?: GetLogsOptions
 ): Promise<TrackerLog[]> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const limit = options?.limit ?? DEFAULT_LIMIT
@@ -65,9 +67,9 @@ export async function getLogs(
   return data as TrackerLog[]
 }
 
-export async function getLogsForDay(date: string): Promise<TrackerLog[]> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export async function getLogsForDay(date: string, supabaseClient?: SupabaseClient): Promise<TrackerLog[]> {
+  const supabase = supabaseClient ?? await createServerClient()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const dayStart = `${date}T00:00:00.000Z`
@@ -86,9 +88,26 @@ export async function getLogsForDay(date: string): Promise<TrackerLog[]> {
   return data as TrackerLog[]
 }
 
+export async function getLoggedDates(limit = 90, supabaseClient?: SupabaseClient): Promise<string[]> {
+  const supabase = supabaseClient ?? await createServerClient()
+  const user = await getSafeUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { data, error } = await supabase
+    .from('logged_dates_summary')
+    .select('log_date')
+    .eq('user_id', user.id)
+    .order('log_date', { ascending: false })
+    .limit(limit)
+
+  if (error) throw new Error(`Failed to fetch logged dates: ${error.message}`)
+
+  return (data ?? []).map(row => row.log_date)
+}
+
 export async function getLog(id: string): Promise<TrackerLog> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { data, error } = await supabase
@@ -106,7 +125,7 @@ export async function updateLog(
   input: UpdateLogInput
 ): Promise<TrackerLog> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const updates: Record<string, unknown> = {}
@@ -131,7 +150,7 @@ export async function updateLog(
 
 export async function deleteLog(id: string): Promise<void> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { error } = await supabase
@@ -149,35 +168,17 @@ export type TrackerLogSummary = {
   last_logged_at: string | null
 }
 
-export async function getTrackerLogSummaries(): Promise<TrackerLogSummary[]> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export async function getTrackerLogSummaries(supabaseClient?: SupabaseClient): Promise<TrackerLogSummary[]> {
+  const supabase = supabaseClient ?? await createServerClient()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
-  // Use RPC-style aggregate — fetch recent logs per tracker and compute in JS
-  // This avoids needing a custom DB function while staying efficient for typical usage
   const { data, error } = await supabase
-    .from('tracker_logs')
-    .select('tracker_id, logged_at')
+    .from('tracker_summaries')
+    .select('tracker_id, count, last_logged_at')
     .eq('user_id', user.id)
-    .order('logged_at', { ascending: false })
-    .limit(2000)
 
   if (error) throw new Error(`Failed to fetch log summaries: ${error.message}`)
 
-  const map = new Map<string, { count: number; last_logged_at: string }>()
-  for (const row of data ?? []) {
-    const existing = map.get(row.tracker_id)
-    if (existing) {
-      existing.count += 1
-    } else {
-      map.set(row.tracker_id, { count: 1, last_logged_at: row.logged_at as string })
-    }
-  }
-
-  return Array.from(map.entries()).map(([tracker_id, info]) => ({
-    tracker_id,
-    count: info.count,
-    last_logged_at: info.last_logged_at,
-  }))
+  return (data ?? []) as TrackerLogSummary[]
 }

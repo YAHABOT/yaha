@@ -1,11 +1,13 @@
 import { createServerClient } from '@/lib/supabase/server'
+import { getSafeUser } from '@/lib/supabase/auth'
 import type { Routine, CreateRoutineInput, UpdateRoutineInput } from '@/types/routine'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const ROUTINE_COLUMNS = 'id, user_id, name, trigger_phrase, type, steps, created_at'
 
-export async function getRoutines(): Promise<Routine[]> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export async function getRoutines(supabaseClient?: SupabaseClient): Promise<Routine[]> {
+  const supabase = supabaseClient ?? await createServerClient()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { data, error } = await supabase
@@ -20,7 +22,7 @@ export async function getRoutines(): Promise<Routine[]> {
 
 export async function getRoutine(id: string): Promise<Routine> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { data, error } = await supabase
@@ -36,7 +38,7 @@ export async function getRoutine(id: string): Promise<Routine> {
 
 export async function createRoutine(input: CreateRoutineInput): Promise<Routine> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { data, error } = await supabase
@@ -60,7 +62,7 @@ export async function updateRoutine(
   input: UpdateRoutineInput
 ): Promise<Routine> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const updates: Record<string, unknown> = {}
@@ -87,7 +89,7 @@ export async function updateRoutine(
 
 export async function deleteRoutine(id: string): Promise<void> {
   const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSafeUser()
   if (!user) throw new Error('Unauthorized')
 
   const { error } = await supabase

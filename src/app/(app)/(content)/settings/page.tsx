@@ -1,25 +1,34 @@
 import { getUser } from '@/lib/db/users'
+import { getSafeUser } from '@/lib/supabase/auth'
 import { SettingsForm } from '@/components/settings/SettingsForm'
+import { redirect } from 'next/navigation'
+import { createServerClient } from '@/lib/supabase/server'
 
 export default async function SettingsPage(): Promise<React.ReactElement> {
-  let user = null
+  const userAuth = await getSafeUser()
+  if (!userAuth) redirect('/login')
+
+  const supabase = await createServerClient()
+  let profile = null
 
   try {
-    user = await getUser()
+    profile = await getUser(userAuth.id, supabase)
   } catch {
-    // Unauthenticated or DB error — render form with empty defaults
+    // DB error — render form with empty defaults
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-textPrimary">Settings</h1>
-        <p className="mt-1 text-sm text-textMuted">
-          Manage your account and preferences
-        </p>
+    <div className="mx-auto max-w-2xl px-6 py-12 space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="space-y-2">
+        <h1 className="text-5xl font-black tracking-tighter text-textPrimary">Settings</h1>
+        <div className="border-t border-white/5 pt-3">
+          <p className="text-sm font-medium text-textMuted opacity-60">
+            Manage your account, targets, and system preferences.
+          </p>
+        </div>
       </div>
 
-      <SettingsForm initialValues={user} />
+      <SettingsForm initialValues={profile} />
     </div>
   )
 }

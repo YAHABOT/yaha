@@ -2,7 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background: #F5F5F5;
-  color: #0A0A0A;
+:root {
+  --background: 240 10% 2%;
+  --foreground: 210 40% 98%;
+  
+  --card: 240 10% 4%;
+  --card-foreground: 210 40% 98%;
+  
+  --popover: 240 10% 4%;
+  --popover-foreground: 210 40% 98%;
+  
+  --primary: 270 91% 65%;
+  --primary-foreground: 210 40% 98%;
+  
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 98%;
+  
+  --muted: 240 10% 6%;
+  --muted-foreground: 215 20% 65%;
+  
+  --accent: 240 10% 6%;
+  --accent-foreground: 210 40% 98%;
+  
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+  
+  --border: 0 0% 15%;
+  --input: 0 0% 15%;
+  --ring: 270 91% 65%;
+
+  /* Health Tokens */
+  --nutrition: 161 72% 39%;
+  --sleep: 217 91% 60%;
+  --workout: 0 84% 60%;
+  --mood: 38 92% 50%;
+  --water: 199 89% 48%;
+  
+  --radius: 0.75rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background-image: 
+      radial-gradient(circle at 50% -20%, #a855f715, transparent),
+      radial-gradient(circle at 0% 100%, #10b98105, transparent);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-card/60 backdrop-blur-md border border-white/5;
+  }
+  
+  .health-card {
+    @apply relative overflow-hidden rounded-2xl border border-white/5 transition-all duration-300 hover:border-white/10;
+    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%);
+  }
+
+  .premium-shadow {
+    box-shadow: 0 0 50px -12px rgba(0, 0, 0, 1);
+  }
+
+  .animate-glow {
+    animation: glow 4s ease-in-out infinite alternate;
+  }
+
+  @keyframes glow {
+    from {
+      filter: drop-shadow(0 0 5px rgba(168, 85, 247, 0.2));
+    }
+    to {
+      filter: drop-shadow(0 0 20px rgba(168, 85, 247, 0.4));
+    }
+  }
+}
+
+/* OLED Smooth Scroll */
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  @apply bg-primary/30 text-primary-foreground;
 }

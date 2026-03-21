@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import type { ChatInput, GeminiResponse } from '@/types/action-card'
 import { parseActionCards } from './actions'
 
@@ -6,7 +6,8 @@ export const GEMINI_MODEL = 'gemini-2.5-flash'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY environment variable is not set')
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY })
+
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
@@ -52,36 +53,65 @@ function buildParts(input: ChatInput): ContentPart[] {
 
 export async function processHealthMessage(
   input: ChatInput,
-  systemPrompt: string
+  systemPrompt: string,
+  history: Array<{ role: 'user' | 'model'; parts: ContentPart[] }> = []
 ): Promise<GeminiResponse> {
-  const parts = buildParts(input)
+  console.log(`[Gemini] Calling ${GEMINI_MODEL} with input:`, input.text)
+  
+  try {
+    const model = genAI.getGenerativeModel({ 
+      model: GEMINI_MODEL,
+      systemInstruction: systemPrompt
+    })
 
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: [{ role: 'user', parts }],
-    config: { systemInstruction: systemPrompt },
-  })
+    const currentParts = buildParts(input)
+    const contents = [
+      ...history,
+      { role: 'user' as const, parts: currentParts }
+    ]
 
-  const text: string = response.text ?? ''
-  const actions = parseActionCards(text)
+    const result = await model.generateContent({ contents })
 
-  return { text, actions }
+    const response = await result.response
+    const text = response.text()
+    console.log(`[Gemini] Response received:`, text.substring(0, 100) + '...')
+    
+    const actions = parseActionCards(text)
+    return { text, actions }
+  } catch (error: unknown) {
+    console.error(`[Gemini] Error calling ${GEMINI_MODEL}:`, error instanceof Error ? error.message : error)
+    throw error
+  }
 }
 
 export async function* streamHealthMessage(
   input: ChatInput,
-  systemPrompt: string
+  systemPrompt: string,
+  history: Array<{ role: 'user' | 'model'; parts: ContentPart[] }> = []
 ): AsyncGenerator<string> {
-  const parts = buildParts(input)
+  console.log(`[Gemini] Streaming ${GEMINI_MODEL}...`)
+  
+  try {
+    const model = genAI.getGenerativeModel({ 
+      model: GEMINI_MODEL,
+      systemInstruction: systemPrompt
+    })
 
-  const stream = await ai.models.generateContentStream({
-    model: GEMINI_MODEL,
-    contents: [{ role: 'user', parts }],
-    config: { systemInstruction: systemPrompt },
-  })
+    const currentParts = buildParts(input)
+    const contents = [
+      ...history,
+      { role: 'user' as const, parts: currentParts }
+    ]
 
-  for await (const chunk of stream) {
-    yield chunk.text ?? ''
+    const result = await model.generateContentStream({ contents })
+
+    for await (const chunk of result.stream) {
+      const text = chunk.text()
+      yield text
+    }
+  } catch (error: unknown) {
+    console.error(`[Gemini] Streaming error for ${GEMINI_MODEL}:`, error instanceof Error ? error.message : error)
+    throw error
   }
 }
 
@@ -90,8 +120,9 @@ export async function extractFromImage(
   mimeType: string,
   prompt: string
 ): Promise<string> {
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
+
+  const result = await model.generateContent({
     contents: [
       {
         role: 'user',
@@ -103,5 +134,6 @@ export async function extractFromImage(
     ],
   })
 
-  return response.text ?? ''
+  const response = await result.response
+  return response.text()
 }

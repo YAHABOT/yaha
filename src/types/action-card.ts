@@ -5,6 +5,8 @@ export type ActionCard = {
   trackerId: string
   trackerName: string
   fields: Record<string, number | string | null>
+  fieldLabels?: Record<string, string>
+  fieldUnits?: Record<string, string>
   date: string // ISO date "YYYY-MM-DD"
   source: 'chat' | 'telegram' | 'manual'
 }

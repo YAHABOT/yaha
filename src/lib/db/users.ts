@@ -1,4 +1,6 @@
 import { createServerClient } from '@/lib/supabase/server'
+import { getSafeUser } from '@/lib/supabase/auth'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const USER_COLUMNS = 'id, alias, targets, telegram_handle'
 
@@ -22,15 +24,20 @@ export type UpsertUserInput = {
   telegram_handle?: string
 }
 
-export async function getUser(): Promise<User | null> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Unauthorized')
+export async function getUser(id?: string, supabaseClient?: SupabaseClient): Promise<User | null> {
+  const supabase = supabaseClient ?? await createServerClient()
+  let userId = id
+
+  if (!userId) {
+    const user = await getSafeUser()
+    if (!user) throw new Error('Unauthorized')
+    userId = user.id
+  }
 
   const { data, error } = await supabase
     .from('users')
     .select(USER_COLUMNS)
-    .eq('id', user.id)
+    .eq('id', userId)
     .maybeSingle()
 
   if (error) throw new Error(`Failed to fetch user: ${error.message}`)

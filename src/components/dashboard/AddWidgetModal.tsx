@@ -93,24 +93,29 @@ export function AddWidgetModal({ trackers, onClose }: Props): React.ReactElement
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/80 backdrop-blur-md"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Modal card */}
-      <div className="relative z-10 w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl">
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-textPrimary">
-            {step === 'type' ? 'Add Widget' : 'Configure Widget'}
-          </h2>
+      <div className="relative z-10 w-full max-w-md rounded-3xl border border-white/10 bg-surface p-6 shadow-[0_24px_64px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-black tracking-tight text-textPrimary">
+              {step === 'type' ? 'Add Widget' : 'Configure Widget'}
+            </h2>
+            <p className="mt-0.5 text-[10px] font-medium uppercase tracking-widest text-textMuted">
+              {step === 'type' ? 'Choose a widget type' : 'Set up your widget'}
+            </p>
+          </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-surfaceHighlight text-textMuted hover:text-textPrimary"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-textMuted transition-all duration-200 hover:border-white/20 hover:text-textPrimary"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
 
@@ -121,12 +126,12 @@ export function AddWidgetModal({ trackers, onClose }: Props): React.ReactElement
                 key={type}
                 type="button"
                 onClick={() => handleSelectType(type)}
-                className="flex flex-col gap-1 rounded-xl border border-border bg-surfaceHighlight p-4 text-left transition-colors hover:border-black/10 hover:bg-black/[0.04]"
+                className="flex flex-col gap-1.5 rounded-2xl border border-white/5 bg-white/[0.02] p-4 text-left transition-all duration-200 hover:border-nutrition/30 hover:bg-nutrition/5 active:scale-[0.97]"
               >
-                <span className="text-sm font-semibold text-textPrimary">
+                <span className="text-[11px] font-black uppercase tracking-widest text-textPrimary">
                   {WIDGET_TYPE_LABELS[type]}
                 </span>
-                <span className="text-xs text-textMuted">
+                <span className="text-[10px] leading-relaxed text-textMuted">
                   {WIDGET_TYPE_DESCRIPTIONS[type]}
                 </span>
               </button>
@@ -140,7 +145,7 @@ export function AddWidgetModal({ trackers, onClose }: Props): React.ReactElement
             {isFieldType && (
               <>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-textMuted" htmlFor="tracker-select">
+                  <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-textMuted" htmlFor="tracker-select">
                     Tracker
                   </label>
                   <select
@@ -150,7 +155,7 @@ export function AddWidgetModal({ trackers, onClose }: Props): React.ReactElement
                       setSelectedTrackerId(e.target.value)
                       setSelectedFieldId('')
                     }}
-                    className="w-full rounded-lg border border-border bg-surfaceHighlight px-3 py-2 text-sm text-textPrimary focus:border-primary focus:outline-none"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-textPrimary backdrop-blur-sm transition-colors focus:border-nutrition/40 focus:outline-none"
                   >
                     <option value="">Select a tracker…</option>
                     {trackers.map(t => (
@@ -161,14 +166,14 @@ export function AddWidgetModal({ trackers, onClose }: Props): React.ReactElement
 
                 {selectedTracker && (
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-textMuted" htmlFor="field-select">
+                    <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-textMuted" htmlFor="field-select">
                       Field
                     </label>
                     <select
                       id="field-select"
                       value={selectedFieldId}
                       onChange={e => setSelectedFieldId(e.target.value)}
-                      className="w-full rounded-lg border border-border bg-surfaceHighlight px-3 py-2 text-sm text-textPrimary focus:border-primary focus:outline-none"
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-textPrimary backdrop-blur-sm transition-colors focus:border-nutrition/40 focus:outline-none"
                     >
                       <option value="">Select a field…</option>
                       {selectedTracker.schema.map(f => (
@@ -185,7 +190,7 @@ export function AddWidgetModal({ trackers, onClose }: Props): React.ReactElement
             {/* Days input — not shown for field_latest */}
             {selectedType !== 'field_latest' && selectedType !== 'correlator' && (
               <div>
-                <label className="mb-1 block text-xs font-medium text-textMuted" htmlFor="days-input">
+                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-textMuted" htmlFor="days-input">
                   Days window
                 </label>
                 <input
@@ -195,15 +200,15 @@ export function AddWidgetModal({ trackers, onClose }: Props): React.ReactElement
                   max={365}
                   value={days}
                   onChange={e => setDays(Math.max(1, parseInt(e.target.value, 10) || DEFAULT_DAYS))}
-                  className="w-full rounded-lg border border-border bg-surfaceHighlight px-3 py-2 text-sm text-textPrimary focus:border-primary focus:outline-none"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-textPrimary backdrop-blur-sm transition-colors focus:border-nutrition/40 focus:outline-none"
                 />
               </div>
             )}
 
             {/* Label */}
             <div>
-              <label className="mb-1 block text-xs font-medium text-textMuted" htmlFor="label-input">
-                Label <span className="text-textMuted/60">(optional)</span>
+              <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-textMuted" htmlFor="label-input">
+                Label <span className="font-medium normal-case tracking-normal text-textMuted/50">(optional)</span>
               </label>
               <input
                 id="label-input"
@@ -212,26 +217,26 @@ export function AddWidgetModal({ trackers, onClose }: Props): React.ReactElement
                 value={label}
                 onChange={e => setLabel(e.target.value)}
                 placeholder={WIDGET_TYPE_LABELS[selectedType]}
-                className="w-full rounded-lg border border-border bg-surfaceHighlight px-3 py-2 text-sm text-textPrimary placeholder-textMuted/40 focus:border-primary focus:outline-none"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-textPrimary placeholder-textMuted/30 backdrop-blur-sm transition-colors focus:border-nutrition/40 focus:outline-none"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-400">{error}</p>
+              <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-400">{error}</p>
             )}
 
             <div className="flex gap-3 pt-1">
               <button
                 type="button"
                 onClick={handleBack}
-                className="flex-1 rounded-lg border border-border py-2.5 text-sm text-textMuted transition-colors hover:border-black/10 hover:text-textPrimary"
+                className="flex-1 rounded-xl border border-white/10 bg-white/5 py-2.5 text-[11px] font-black uppercase tracking-widest text-textMuted transition-all duration-200 hover:border-white/20 hover:text-textPrimary"
               >
                 Back
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition-opacity disabled:opacity-50"
+                className="flex-1 rounded-xl border border-nutrition/30 bg-nutrition/15 py-2.5 text-[11px] font-black uppercase tracking-widest text-nutrition transition-all duration-200 hover:border-nutrition/50 hover:bg-nutrition/25 hover:shadow-[0_0_16px_rgba(16,185,129,0.15)] disabled:opacity-40"
               >
                 {submitting ? 'Adding…' : 'Add Widget'}
               </button>

@@ -1,4 +1,4 @@
-export type LogSource = 'manual' | 'web' | 'telegram'
+export type LogSource = 'manual' | 'web' | 'telegram' | 'chat'
 
 export type LogFields = Record<string, number | string | null>
 

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Plus } from 'lucide-react'
+import { Plus, ChevronLeft } from 'lucide-react'
 import { getRoutines } from '@/lib/db/routines'
 import { RoutineCard } from '@/components/routines/RoutineCard'
 
@@ -18,6 +18,14 @@ export default async function RoutinesPage(): Promise<React.ReactElement> {
 
   return (
     <div>
+      <Link
+        href="/dashboard"
+        className="group mb-6 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-textMuted transition-colors hover:text-textPrimary"
+      >
+        <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+        Back
+      </Link>
+
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-textPrimary">Routines</h1>
         <Link

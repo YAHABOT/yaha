@@ -1,4 +1,8 @@
+'use client' // Needed: delete confirmation modal state + router.refresh after delete
+
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { Pencil, Trash2, Terminal, Sunrise, Moon, Zap } from 'lucide-react'
 import { deleteRoutineAction } from '@/app/actions/routines'
 import type { Routine, RoutineType } from '@/types/routine'
@@ -65,19 +69,59 @@ type Props = {
   routine: Routine
 }
 
-export async function RoutineCard({ routine }: Props): Promise<React.ReactElement> {
+export function RoutineCard({ routine }: Props): React.ReactElement {
+  const router = useRouter()
   const stepCount = routine.steps.length
   const style = TYPE_STYLES[routine.type]
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false)
+  const [deleting, setDeleting] = useState<boolean>(false)
 
   async function handleDelete(): Promise<void> {
-    'use server'
-    await deleteRoutineAction(routine.id)
+    if (deleting) return
+    setDeleting(true)
+    const result = await deleteRoutineAction(routine.id)
+    if (result.error) {
+      setDeleting(false)
+      setShowDeleteConfirm(false)
+    } else {
+      router.refresh()
+    }
   }
 
   return (
     <div
-      className={`group relative rounded-[32px] border bg-white/[0.02] backdrop-blur-md p-8 transition-all duration-300 shadow-2xl overflow-hidden ${style.cardBorder} ${style.cardHoverBorder} hover:bg-white/[0.04]`}
+      className={`relative rounded-[32px] border bg-white/[0.02] backdrop-blur-md p-8 transition-all duration-300 shadow-2xl overflow-hidden ${style.cardBorder} ${style.cardHoverBorder} hover:bg-white/[0.04]`}
     >
+      {/* Delete confirmation modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)} />
+          <div className="relative w-full max-w-sm rounded-3xl border border-red-500/20 bg-[#0A0A0A] p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="mb-1 text-base font-black text-textPrimary">Delete Routine</h3>
+            <p className="mb-6 text-xs text-textMuted/60">
+              Delete <span className="font-bold text-textPrimary">{routine.name}</span>? This cannot be undone.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 rounded-xl bg-red-500 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white transition-all hover:bg-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-textMuted transition-colors hover:text-textPrimary"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Background Glow */}
       <div className={`absolute -top-12 -right-12 h-32 w-32 ${style.glowColor} blur-[80px] pointer-events-none opacity-30`} />
 
@@ -88,7 +132,7 @@ export async function RoutineCard({ routine }: Props): Promise<React.ReactElemen
               {style.icon}
             </div>
             <div>
-              <h3 className="text-xl font-black text-textPrimary">{routine.name}</h3>
+              <h3 className="text-xl font-black text-textPrimary break-words">{routine.name}</h3>
               <div className="flex gap-2 mt-1">
                 <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest border ${style.badgeBg} ${style.badgeBorder} ${style.badgeText}`}>
                   {TYPE_LABELS[routine.type]}
@@ -100,21 +144,21 @@ export async function RoutineCard({ routine }: Props): Promise<React.ReactElemen
             </div>
           </div>
 
-          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          {/* Edit/Delete always visible — no hover-only opacity */}
+          <div className="flex gap-2">
             <Link
               href={`/routines/${routine.id}/edit`}
               className="p-2 rounded-lg bg-white/5 border border-white/5 text-textMuted hover:text-textPrimary hover:bg-white/10 hover:border-white/10 transition-all duration-200"
             >
               <Pencil className="h-4 w-4" />
             </Link>
-            <form action={handleDelete}>
-              <button
-                type="submit"
-                className="p-2 rounded-lg bg-white/5 border border-white/5 text-textMuted hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-all duration-200"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </form>
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="p-2 rounded-lg bg-white/5 border border-white/5 text-textMuted hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-all duration-200"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           </div>
         </div>
 

@@ -11,9 +11,9 @@ type Props = {
 
 function MobileSessionList({ sessions }: { sessions: ChatSession[] }): React.ReactElement {
   return (
-    <div className="flex flex-1 flex-col bg-background md:hidden">
-      {/* Mobile header */}
-      <div className="border-b border-white/[0.06] p-4">
+    <div className="flex flex-1 flex-col overflow-hidden bg-background md:hidden">
+      {/* Mobile header — shrink-0 so it never scrolls away */}
+      <div className="shrink-0 border-b border-white/[0.06] p-4">
         <Link
           href="/chat/new"
           className="flex items-center justify-center gap-2 w-full rounded-2xl bg-nutrition px-4 py-3 text-sm font-black text-black transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(16,185,129,0.35)] active:scale-[0.98] shadow-[0_4px_16px_rgba(16,185,129,0.2)]"

@@ -637,8 +637,8 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         </div>
       )}
 
-      {/* Input */}
-      <div className="bg-card/60 backdrop-blur-xl border-t border-white/5 sticky bottom-0 p-4 md:p-5 lg:px-12">
+      {/* Input — shrink-0 keeps it always visible above mobile bottom nav; no sticky needed inside flex column */}
+      <div className="shrink-0 bg-card/60 backdrop-blur-xl border-t border-white/5 p-4 md:p-5 lg:px-12">
         <form onSubmit={handleSubmit} className="relative mx-auto max-w-4xl">
           <input
             ref={fileInputRef}

@@ -42,8 +42,8 @@ export function TrackerCard({ tracker }: Props): React.ReactElement {
           >
             <Activity className="h-5 w-5" />
           </div>
-          <div>
-            <h3 className="text-base font-black text-textPrimary">
+          <div className="min-w-0">
+            <h3 className="text-base font-black text-textPrimary break-words">
               {tracker.name}
             </h3>
           </div>

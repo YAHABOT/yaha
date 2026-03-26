@@ -68,24 +68,23 @@ export function CreateTrackerForm(): React.ReactElement {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault()
+    if (submitting) return
     setError(null)
     setSubmitting(true)
 
-    try {
-      const result = await createTrackerAction({
-        name,
-        type,
-        color,
-        schema: schema.filter((f) => f.label.trim() !== ''),
-      })
+    const result = await createTrackerAction({
+      name,
+      type,
+      color,
+      schema: schema.filter((f) => f.label.trim() !== ''),
+    })
 
-      if (result.error) {
-        setError(result.error)
-      } else {
-        router.push('/trackers')
-      }
-    } finally {
+    if (result.error) {
+      setError(result.error)
       setSubmitting(false)
+    } else {
+      router.push('/trackers')
+      // Do NOT reset submitting — let component unmount to prevent double-submit
     }
   }
 
@@ -164,14 +163,13 @@ export function CreateTrackerForm(): React.ReactElement {
           <label className="text-sm text-textMuted">
             Fields ({schema.length}/{MAX_SCHEMA_FIELDS})
           </label>
+          {/* Create Tracker is the primary CTA here */}
           <button
-            type="button"
-            onClick={handleAddField}
-            disabled={schema.length >= MAX_SCHEMA_FIELDS}
-            className="flex items-center gap-1 rounded-lg bg-surfaceHighlight px-3 py-1.5 text-xs font-medium text-textPrimary transition-colors hover:bg-black/[0.06] disabled:opacity-40"
+            type="submit"
+            disabled={submitting}
+            className="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
           >
-            <Plus className="h-3.5 w-3.5" />
-            Add Field
+            {submitting ? 'Creating...' : 'Create Tracker'}
           </button>
         </div>
 
@@ -193,14 +191,16 @@ export function CreateTrackerForm(): React.ReactElement {
         )}
       </div>
 
-      {/* Submit */}
+      {/* Footer: Add Field + Cancel */}
       <div className="flex items-center gap-3">
         <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
+          type="button"
+          onClick={handleAddField}
+          disabled={schema.length >= MAX_SCHEMA_FIELDS}
+          className="flex items-center gap-1 rounded-lg bg-surfaceHighlight px-4 py-2.5 text-sm font-medium text-textPrimary transition-colors hover:bg-black/[0.06] disabled:opacity-40"
         >
-          {submitting ? 'Creating...' : 'Create Tracker'}
+          <Plus className="h-3.5 w-3.5" />
+          Add Field
         </button>
         <button
           type="button"

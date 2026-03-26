@@ -90,13 +90,14 @@ export function RoutineForm({ trackers, initialValues }: Props) {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault()
+    if (submitting) return
     setError(null)
     setSubmitting(true)
 
     try {
       const steps = buildStepsFromDrafts(stepDrafts, trackers)
       const input = { name: name.trim(), trigger_phrase: triggerPhrase.trim(), type, steps }
-      
+
       let result
       if (initialValues?.id) {
         result = await updateRoutineAction(initialValues.id, input)
@@ -106,13 +107,13 @@ export function RoutineForm({ trackers, initialValues }: Props) {
 
       if (result && result.error) {
         setError(result.error)
+        setSubmitting(false)
         return
       }
       router.push('/routines')
-      router.refresh()
+      // Do NOT reset submitting — let component unmount to prevent double-submit
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred')
-    } finally {
       setSubmitting(false)
     }
   }
@@ -213,7 +214,7 @@ export function RoutineForm({ trackers, initialValues }: Props) {
                 >
                   <Target size={14} style={{ color: tracker.color }} />
                 </div>
-                <span className="text-xs font-black uppercase tracking-widest text-textPrimary truncate">{tracker.name}</span>
+                <span className="text-xs font-black uppercase tracking-widest text-textPrimary break-words">{tracker.name}</span>
               </button>
             ))}
           </div>

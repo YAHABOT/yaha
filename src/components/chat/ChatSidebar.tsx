@@ -307,10 +307,8 @@ export function ChatSidebar({ sessions, currentSessionId, onMobileClose }: Props
                     </span>
                   </Link>
 
-                  {/* Action buttons — visible on hover or active */}
-                  <div className={`absolute right-2.5 bottom-2.5 flex items-center gap-1 transition-all duration-200 ${
-                    isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-0.5 group-hover:opacity-100 group-hover:translate-y-0'
-                  }`}>
+                  {/* Action buttons — always visible */}
+                  <div className="absolute right-2.5 bottom-2.5 flex items-center gap-1">
                     <button
                       onClick={(e) => {
                         e.preventDefault()

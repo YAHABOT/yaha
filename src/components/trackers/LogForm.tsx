@@ -68,32 +68,32 @@ export function LogForm({ tracker }: Props): React.ReactElement {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault()
+    if (submitting) return
     setError(null)
     setSuccess(false)
     setSubmitting(true)
 
-    try {
-      if (!hasAnyValue(values)) {
-        setError('Fill in at least one field.')
-        return
-      }
+    if (!hasAnyValue(values)) {
+      setError('Fill in at least one field.')
+      setSubmitting(false)
+      return
+    }
 
-      const fields = parseFieldValues(tracker.schema, values)
-      const result = await createLogAction(
-        tracker.id,
-        fields,
-        loggedAt || undefined,
-        'manual'
-      )
+    const fields = parseFieldValues(tracker.schema, values)
+    const result = await createLogAction(
+      tracker.id,
+      fields,
+      loggedAt || undefined,
+      'manual'
+    )
 
-      if (result.error) {
-        setError(result.error)
-      } else {
-        setValues(buildInitialValues(tracker.schema))
-        setLoggedAt('')
-        setSuccess(true)
-      }
-    } finally {
+    if (result.error) {
+      setError(result.error)
+      setSubmitting(false)
+    } else {
+      setValues(buildInitialValues(tracker.schema))
+      setLoggedAt('')
+      setSuccess(true)
       setSubmitting(false)
     }
   }

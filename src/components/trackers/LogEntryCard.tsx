@@ -37,16 +37,24 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
   const [editValues, setEditValues] = useState<Record<string, string>>({})
   const [originalValues, setOriginalValues] = useState<Record<string, unknown>>({})
   const [editError, setEditError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<boolean>(false)
 
   const filledFields = schema.filter(
     (field) => log.fields[field.fieldId] !== null && log.fields[field.fieldId] !== undefined
   )
 
   const handleDelete = (): void => {
-    if (!confirm('Are you sure you want to delete this entry?')) return
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
     startDeleteTransition(async () => {
       await deleteLogAction(log.id, log.tracker_id)
     })
+  }
+
+  const handleCancelDelete = (): void => {
+    setConfirmDelete(false)
   }
 
   function startEdit(): void {
@@ -181,12 +189,32 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
                 <X className="h-3.5 w-3.5" />
               </button>
             </>
+          ) : confirmDelete ? (
+            <>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-red-400 transition-all duration-200 hover:bg-red-500/10 disabled:opacity-50"
+                aria-label="Confirm delete"
+              >
+                {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Confirm?'}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelDelete}
+                className="rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-textMuted transition-colors hover:text-textPrimary"
+                aria-label="Cancel delete"
+              >
+                Cancel
+              </button>
+            </>
           ) : (
             <>
               <button
                 type="button"
                 onClick={startEdit}
-                className="rounded-lg p-1 text-textMuted opacity-0 transition-all duration-300 group-hover:opacity-100 hover:bg-white/[0.04] hover:text-textPrimary"
+                className="rounded-lg p-1 text-textMuted transition-all duration-300 hover:bg-white/[0.04] hover:text-textPrimary"
                 aria-label="Edit entry"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -194,7 +222,7 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
               <button
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="rounded-lg p-1 text-textMuted opacity-0 transition-all duration-300 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400 hover:shadow-[0_0_8px_rgba(239,68,68,0.2)] disabled:opacity-50"
+                className="rounded-lg p-1 text-textMuted transition-all duration-300 hover:bg-red-500/10 hover:text-red-400 hover:shadow-[0_0_8px_rgba(239,68,68,0.2)] disabled:opacity-50"
                 title="Delete entry"
               >
                 {isDeleting ? (

@@ -5,6 +5,9 @@ const DEFAULT_SESSION_TITLE = 'New Chat'
 const DEFAULT_AI_CONTEXT_LIMIT = 20
 const SESSIONS_SIDEBAR_LIMIT = 30
 const MESSAGES_DISPLAY_LIMIT = 100
+// Reuse a very recent default session instead of spawning a new one.
+// Prevents 6x ghost sessions from React StrictMode remounts + rapid navigation.
+const SESSION_REUSE_WINDOW_MS = 10_000
 
 const SESSION_COLUMNS = 'id, user_id, title, active_routine_id, current_step_index, active_agent_id, updated_at'
 const MESSAGE_COLUMNS = 'id, session_id, role, content, actions, created_at'
@@ -14,18 +17,38 @@ export async function getSessions(): Promise<ChatSession[]> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
 
+  // Run cleanup synchronously BEFORE fetch so sidebar filters out deleted sessions.
+  // Use timeout to prevent blocking if cleanup is slow.
+  const { cleanupStaleTemporarySessions } = await import('@/lib/db/chat-cleanup')
+  const cleanupPromise = cleanupStaleTemporarySessions()
+  const cleanupWithTimeout = Promise.race([
+    cleanupPromise,
+    new Promise<Set<string>>(resolve => {
+      const timeout = setTimeout(() => resolve(new Set()), 2000)
+      cleanupPromise.then(ids => {
+        clearTimeout(timeout)
+        resolve(ids)
+      }).catch(() => resolve(new Set()))
+    })
+  ])
+  const deletedSessionIds = await cleanupWithTimeout
+
   const { data, error } = await supabase
     .from('chat_sessions')
     .select(SESSION_COLUMNS)
     .eq('user_id', user.id)
+    .neq('title', DEFAULT_SESSION_TITLE)
     .order('updated_at', { ascending: false })
     .limit(SESSIONS_SIDEBAR_LIMIT)
 
   if (error) throw new Error(`Failed to fetch sessions: ${error.message}`)
-  return data as ChatSession[]
+  // Filter out any sessions that were deleted in cleanup
+  const filtered = (data as ChatSession[]).filter(s => !deletedSessionIds.has(s.id))
+  return filtered
 }
 
 export async function getSession(id: string): Promise<ChatSession> {
+  const start = Date.now()
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
@@ -37,6 +60,7 @@ export async function getSession(id: string): Promise<ChatSession> {
     .eq('user_id', user.id)
     .single()
 
+  console.log(`[getSession] took ${Date.now() - start}ms`)
   if (error) throw new Error(`Failed to fetch session: ${error.message}`)
   return data as ChatSession
 }
@@ -45,6 +69,24 @@ export async function createSession(input?: CreateSessionInput): Promise<ChatSes
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
+
+  // Idempotency guard: for default "New Chat" sessions, reuse any session
+  // created/touched in the last SESSION_REUSE_WINDOW_MS. This blocks ghost
+  // spawning when rapid navigation or React StrictMode fires the effect twice.
+  if (!input?.title) {
+    const windowStart = new Date(Date.now() - SESSION_REUSE_WINDOW_MS).toISOString()
+    const { data: recent } = await supabase
+      .from('chat_sessions')
+      .select(SESSION_COLUMNS)
+      .eq('user_id', user.id)
+      .eq('title', DEFAULT_SESSION_TITLE)
+      .gte('updated_at', windowStart)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (recent) return recent as ChatSession
+  }
 
   const { data, error } = await supabase
     .from('chat_sessions')
@@ -79,6 +121,21 @@ export async function updateSession(
   return data as ChatSession
 }
 
+export async function deleteSessions(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('chat_sessions')
+    .delete()
+    .in('id', ids)
+    .eq('user_id', user.id)
+
+  if (error) throw new Error(`Failed to delete sessions: ${error.message}`)
+}
+
 export async function deleteSession(id: string): Promise<void> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -104,6 +161,7 @@ export async function deleteSession(id: string): Promise<void> {
 }
 
 export async function getMessages(sessionId: string): Promise<ChatMessage[]> {
+  const start = Date.now()
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Unauthorized')
@@ -125,6 +183,7 @@ export async function getMessages(sessionId: string): Promise<ChatMessage[]> {
     .order('created_at', { ascending: false })
     .limit(MESSAGES_DISPLAY_LIMIT)
 
+  console.log(`[getMessages] took ${Date.now() - start}ms for ${data?.length ?? 0} messages`)
   if (error) throw new Error(`Failed to fetch messages: ${error.message}`)
   // Reverse to restore chronological order for display
   return (data as ChatMessage[]).reverse()

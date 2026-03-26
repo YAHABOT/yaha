@@ -129,7 +129,26 @@ export async function updateLog(
   if (!user) throw new Error('Unauthorized')
 
   const updates: Record<string, unknown> = {}
-  if (input.fields !== undefined) updates.fields = input.fields
+
+  if (input.fields !== undefined) {
+    // Patch semantics: fetch current fields first, then merge only non-null changes.
+    // Sending only the changed keys via .update() would overwrite the entire JSONB column,
+    // destroying all other fields. This read-modify-write prevents data loss.
+    const { data: current, error: fetchError } = await supabase
+      .from('tracker_logs')
+      .select('fields')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (fetchError) throw new Error(`Failed to fetch log for merge: ${fetchError.message}`)
+
+    const patchFields = Object.fromEntries(
+      Object.entries(input.fields).filter(([, v]) => v !== null && v !== undefined)
+    )
+    updates.fields = { ...(current?.fields as Record<string, unknown>), ...patchFields }
+  }
+
   if (input.logged_at !== undefined) updates.logged_at = input.logged_at
 
   if (Object.keys(updates).length === 0) {

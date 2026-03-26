@@ -3,13 +3,14 @@
 import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { confirmLogAction } from '@/app/actions/chat'
-import { formatFieldValue } from '@/lib/utils/format'
 import type { ActionCard as ActionCardType } from '@/types/action-card'
 
 type ActionCardStatus = 'pending' | 'confirmed' | 'discarded' | 'loading'
 
 type Props = {
   card: ActionCardType
+  messageId?: string       // DB message ID — used to persist confirmed: true on the message's JSONB
+  cardIndex?: number       // Position in message.actions array — used for exact JSONB match
   onConfirm?: () => void
   onDiscard?: () => void
   onConfirmed?: () => void  // fires after the card is confirmed — used by ChatInterface to advance routine
@@ -60,19 +61,33 @@ function getTypeColors(trackerType?: string) {
   return TRACKER_TYPE_COLORS[trackerType.toLowerCase()] ?? DEFAULT_TYPE_COLORS
 }
 
-export function ActionCard({ card, onConfirm, onDiscard, onConfirmed }: Props): React.ReactElement {
-  const [status, setStatus] = useState<ActionCardStatus>('pending')
+export function ActionCard({ card, messageId, cardIndex, onConfirm, onDiscard, onConfirmed }: Props): React.ReactElement {
+  // Initialize as confirmed if the DB already has confirmed: true — survives page refresh
+  const [status, setStatus] = useState<ActionCardStatus>(card.confirmed ? 'confirmed' : 'pending')
   const [isEditExpanded, setIsEditExpanded] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [editableFields, setEditableFields] = useState<Record<string, string | number | null>>(() => {
-    // Pre-format decimal time/duration values so cards show "6h 42m" / "22:50" not "6.37" / "22.83"
+    // Include ALL fields from schema (fieldLabels), not just logged ones
+    // Unlogged fields initialize as empty strings
+    const allSchemaKeys = card.fieldLabels ? Object.keys(card.fieldLabels) : Object.keys(card.fields)
+
     return Object.fromEntries(
-      Object.entries(card.fields).map(([key, value]) => {
-        if (value === null || value === undefined || value === '') return [key, value]
-        const label = card.fieldLabels?.[key]
+      allSchemaKeys.map((key) => {
+        // Get the logged value if it exists, otherwise undefined (will be empty string)
+        const value = card.fields?.[key]
+
+        if (value === null || value === undefined || value === '') return [key, '']
         const unit = card.fieldUnits?.[key]
-        const formatted = formatFieldValue(value, unit, label)
-        return [key, formatted === '---' ? value : formatted]
+        // Duration fields (unit = HRS): convert decimal hours to HH:MM for the input.
+        // The unit pill is outside the input so we never embed "HRS" in the value string.
+        if (unit && unit.toLowerCase() === 'hrs' && typeof value === 'number') {
+          const totalMinutes = Math.round(value * 60)
+          const h = Math.floor(totalMinutes / 60) % 24
+          const m = totalMinutes % 60
+          return [key, `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`]
+        }
+        // All other fields: raw value only — unit pill handles the suffix display
+        return [key, value]
       })
     )
   })
@@ -83,11 +98,13 @@ export function ActionCard({ card, onConfirm, onDiscard, onConfirmed }: Props): 
     setStatus('loading')
     setErrorMessage(null)
 
+    console.log('[ActionCard] handleConfirm — messageId:', messageId, 'cardIndex:', cardIndex)
+
     // Send the EDITED fields, not just the original ones
     const result = await confirmLogAction({
       ...card,
       fields: editableFields
-    })
+    }, messageId, cardIndex)
 
     if (result.error) {
       setErrorMessage(result.error)
@@ -118,23 +135,14 @@ export function ActionCard({ card, onConfirm, onDiscard, onConfirmed }: Props): 
         className="animate-in fade-in zoom-in-95 duration-500 rounded-2xl bg-nutrition/[0.06] border border-nutrition/25 p-5 shadow-[0_0_20px_rgba(16,185,129,0.1)]"
         data-testid="action-card-confirmed"
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nutrition/20 shadow-[0_0_12px_rgba(16,185,129,0.3)]">
-              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-nutrition"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            </div>
-            <div>
-              <p className="text-sm font-black text-nutrition">Logged Successfully</p>
-              <p className="text-[11px] text-muted-foreground font-medium mt-0.5">{card.trackerName}</p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-nutrition/20 shadow-[0_0_12px_rgba(16,185,129,0.3)]">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-nutrition"><polyline points="20 6 9 17 4 12"></polyline></svg>
           </div>
-          <button
-            type="button"
-            onClick={() => setStatus('pending')}
-            className="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-muted-foreground/60 transition-all duration-200 hover:border-white/20 hover:bg-white/[0.08] hover:text-muted-foreground"
-          >
-            Edit
-          </button>
+          <div>
+            <p className="text-sm font-black text-nutrition">Logged Successfully</p>
+            <p className="text-[11px] text-muted-foreground font-medium mt-0.5">{card.trackerName}</p>
+          </div>
         </div>
       </div>
     )
@@ -151,14 +159,11 @@ export function ActionCard({ card, onConfirm, onDiscard, onConfirmed }: Props): 
     )
   }
 
-  // Order fields by schema (fieldLabels keys come from schema.forEach in the route,
-  // so they preserve schema order for fresh responses; fall back to raw key order for history)
-  const orderedKeys = card.fieldLabels
-    ? Object.keys(card.fieldLabels)
-    : Object.keys(editableFields)
-  const fieldEntries = orderedKeys
-    .filter((key) => key in editableFields)
-    .map((key) => [key, editableFields[key]] as [string, string | number | null])
+  // fieldOrder is an explicit array — survives JSONB round-trip without alphabetical reordering.
+  // Fall back: fieldLabels keys (may be alphabetical after JSONB), then raw editableFields order.
+  const orderedKeys = card.fieldOrder
+    ?? (card.fieldLabels ? Object.keys(card.fieldLabels) : Object.keys(editableFields))
+  const fieldEntries = orderedKeys.map((key) => [key, editableFields[key]] as [string, string | number | null])
 
   return (
     <div
@@ -189,7 +194,7 @@ export function ActionCard({ card, onConfirm, onDiscard, onConfirmed }: Props): 
       </div>
 
       {/* Fields Grid */}
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className={`grid grid-cols-2 gap-2.5 transition-all duration-200 ${isEditExpanded ? 'rounded-2xl ring-1 ring-blue-500/30 p-1' : ''}`}>
         {fieldEntries.map(([key, value]) => {
           const isLarge = String(value || '').length > 20
           const label = card.fieldLabels?.[key] || key
@@ -198,14 +203,14 @@ export function ActionCard({ card, onConfirm, onDiscard, onConfirmed }: Props): 
           return (
             <div
               key={key}
-              className={`flex flex-col gap-1.5 rounded-2xl bg-white/[0.03] p-3.5 border border-white/[0.05] transition-all duration-200 focus-within:border-white/10 focus-within:bg-white/[0.05] ${isLarge ? 'col-span-2' : ''}`}
+              className={`flex flex-col gap-1.5 rounded-2xl bg-white/[0.03] p-3.5 border transition-all duration-200 ${isEditExpanded ? 'border-blue-500/20 bg-blue-500/[0.03]' : 'border-white/[0.05]'} focus-within:border-blue-500/40 focus-within:bg-white/[0.05] ${isLarge ? 'col-span-2' : ''}`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
                   {label}
                 </span>
                 {unit && (
-                  <span className={`text-[9px] font-black uppercase tracking-wider ${typeColors.text} opacity-50`}>
+                  <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-white/[0.05] border border-white/10 text-muted-foreground/50 select-none cursor-default">
                     {unit}
                   </span>
                 )}
@@ -215,7 +220,7 @@ export function ActionCard({ card, onConfirm, onDiscard, onConfirmed }: Props): 
                 type="text"
                 value={value ?? ''}
                 onChange={(e) => handleFieldChange(key, e.target.value)}
-                className="bg-transparent text-sm font-bold text-foreground focus:outline-none w-full placeholder:text-muted-foreground/20 leading-snug"
+                className="bg-transparent text-sm font-bold text-foreground w-full placeholder:text-muted-foreground/20 leading-snug focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded"
                 placeholder="..."
               />
             </div>

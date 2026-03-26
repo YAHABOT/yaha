@@ -45,6 +45,7 @@ type ChatRequestBody = {
 }
 
 type ChatResponseMessage = {
+  id: string          // Real DB UUID — passed to ActionCard so confirmLogAction can persist confirmed:true
   role: 'assistant'
   content: string
   actions: ActionCard[]
@@ -242,8 +243,11 @@ export async function POST(req: Request): Promise<Response> {
         const fieldLabels: Record<string, string> = {}
         const fieldUnits: Record<string, string> = {}
         
+        // fieldOrder is an array — arrays preserve order in JSONB unlike object keys
+        const fieldOrder: string[] = []
         schema.forEach(f => {
           fieldLabels[f.fieldId] = f.label
+          fieldOrder.push(f.fieldId)
           if (f.unit) fieldUnits[f.fieldId] = f.unit
           // Handle 'time' type as 'hrs' unit if not specified, for the formatter
           if (f.type === 'time' && !f.unit) fieldUnits[f.fieldId] = 'hrs'
@@ -253,6 +257,7 @@ export async function POST(req: Request): Promise<Response> {
           ...action,
           fieldLabels,
           fieldUnits,
+          fieldOrder,
           fields: sanitizeFields(action.fields, schema)
         }
       }
@@ -288,8 +293,8 @@ export async function POST(req: Request): Promise<Response> {
       }
     }
 
-    // Save model response
-    await addMessage({
+    // Save model response — capture the returned row to get the real DB UUID
+    const assistantMessage = await addMessage({
       session_id: session.id,
       role: 'assistant',
       content: text,
@@ -298,6 +303,7 @@ export async function POST(req: Request): Promise<Response> {
 
     const responseBody: ChatResponse = {
       message: {
+        id: assistantMessage.id,  // Real UUID — lets ChatInterface pass it to ActionCard for persistence
         role: 'assistant',
         content: text,
         actions: sanitizedActions,

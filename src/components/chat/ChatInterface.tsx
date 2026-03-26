@@ -2,14 +2,16 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Paperclip, Send, X, Bot, Zap, CheckCircle2, ChevronRight } from 'lucide-react'
+import { Paperclip, Send, X, Bot, Zap, CheckCircle2, ChevronRight, Menu } from 'lucide-react'
 import { ActionCard } from '@/components/chat/ActionCard'
 import { AgentSelector } from '@/components/chat/AgentSelector'
+import { ChatSidebar } from '@/components/chat/ChatSidebar'
 import type { ChatMessage, ChatSession } from '@/types/chat'
 import type { ChatAttachment } from '@/types/action-card'
 import type { Agent } from '@/types/agent'
 import type { Routine } from '@/types/routine'
 import { getAgentsAction } from '@/app/actions/agents'
+import { renameSessionAction } from '@/app/actions/chat'
 
 const MAX_TEXTAREA_ROWS = 6
 const ACCEPTED_FILE_TYPES = 'image/*,audio/*,application/pdf'
@@ -30,9 +32,11 @@ type Props = {
   sessionId: string
   session: ChatSession | null
   initialRoutine?: Routine | null
+  sessions?: ChatSession[]
+  currentSessionId?: string
 }
 
-export function ChatInterface({ initialMessages, sessionId, session: initialSession, initialRoutine }: Props): React.ReactElement {
+export function ChatInterface({ initialMessages, sessionId, session: initialSession, initialRoutine, sessions = [] }: Props): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [input, setInput] = useState<string>('')
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -42,7 +46,16 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   const [agents, setAgents] = useState<Agent[]>([])
   const [activeAgentId, setActiveAgentId] = useState<string | null>(initialSession?.active_agent_id ?? null)
   const [currentRoutine, setCurrentRoutine] = useState<Routine | null>(initialRoutine ?? null)
+  // BUG 6 fix: internal session ID state so URL updates don't remount the component
+  const [currentSessionId, setCurrentSessionId] = useState<string>(sessionId)
+  // BUG 3: mobile sidebar drawer state
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false)
+  // BUG 4: save chat modal state
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState<boolean>(false)
+  const [saveTitle, setSaveTitle] = useState<string>('')
+  const [isSaving, setIsSaving] = useState<boolean>(false)
 
+  const [isHydrated, setIsHydrated] = useState<boolean>(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -50,20 +63,31 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   const searchParams = useSearchParams()
   const triggerSent = useRef(false)
 
+  // Mark hydrated after first client paint so the messages area doesn't flash unstyled
+  useEffect(() => { setIsHydrated(true) }, [])
+
   // Fetch Agents
   useEffect(() => {
     getAgentsAction().then(setAgents)
   }, [])
 
-  // Auto-trigger ritual if routine param is provided
+  // Auto-trigger ritual if routine param is provided.
+  // Double-locked: triggerSent.current (per-instance) + sessionStorage (survives
+  // React StrictMode remounts) with a 5s TTL to allow legitimate re-starts.
   useEffect(() => {
     if (triggerSent.current) return
     const routineId = searchParams.get('routine')
-    if (routineId && sessionId === 'new' && messages.length === 0) {
-      triggerSent.current = true
-      const trigger = currentRoutine?.trigger_phrase || "start ritual"
-      handleSendInternal(trigger, routineId)
-    }
+    if (!routineId || sessionId !== 'new' || messages.length > 0) return
+
+    const storageKey = `yaha_trigger_${routineId}`
+    const lastTs = sessionStorage.getItem(storageKey)
+    if (lastTs && Date.now() - Number(lastTs) < 5_000) return
+
+    triggerSent.current = true
+    sessionStorage.setItem(storageKey, String(Date.now()))
+
+    const trigger = currentRoutine?.trigger_phrase || 'start ritual'
+    handleSendInternal(trigger, routineId)
   }, [searchParams, sessionId, messages.length, currentRoutine])
 
   useEffect(() => {
@@ -72,18 +96,18 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
 
   const handleAgentSelect = async (agentId: string | null) => {
     setActiveAgentId(agentId)
-    if (sessionId !== 'new') {
+    if (currentSessionId !== 'new') {
       // Update session explicitly
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, agentId: agentId || null, message: "Switching agent..." })
+        body: JSON.stringify({ sessionId: currentSessionId, agentId: agentId || null, message: "Switching agent..." })
       })
       if (res.ok) {
         const data = await res.json()
         setMessages(prev => [...prev, {
           id: `sw-${Date.now()}`,
-          session_id: sessionId,
+          session_id: currentSessionId,
           role: 'assistant',
           content: data.message.content,
           actions: null,
@@ -96,6 +120,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
 
   // Silent variant — sends a message to the API without adding a visible user bubble.
   // Used by the routine auto-advance flow so the UI doesn't show an awkward hidden prompt.
+  // Also refreshes session + routine state so the step badge advances correctly (Fix 5).
   async function handleSendSilent(text: string): Promise<void> {
     if (isLoading) return
     setIsLoading(true)
@@ -103,18 +128,31 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId, agentId: activeAgentId })
+        body: JSON.stringify({ message: text, sessionId: currentSessionId, agentId: activeAgentId })
       })
       if (!res.ok) return
       const data = await res.json()
       setMessages((prev) => [...prev, {
-        id: `mod-${Date.now()}`,
+        id: data.message?.id ?? `mod-${Date.now()}`,
         session_id: data.sessionId,
         role: 'assistant',
         content: data.message.content,
         actions: data.message.actions,
         created_at: new Date().toISOString()
       }])
+
+      // Refresh session state so the routine step badge reflects the newly advanced step
+      const sessRes = await fetch(`/api/chat/sessions/${data.sessionId}`)
+      if (sessRes.ok) {
+        const nextSession = await sessRes.json()
+        setSession(nextSession)
+        if (nextSession.active_routine_id) {
+          const routRes = await fetch(`/api/routines/${nextSession.active_routine_id}`)
+          if (routRes.ok) setCurrentRoutine(await routRes.json())
+        } else {
+          setCurrentRoutine(null)
+        }
+      }
     } catch {
       // Silent — don't surface errors from auto-advance
     } finally {
@@ -129,7 +167,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     // User message is optimistic
     const optimistic: ChatMessage = {
       id: `opt-${Date.now()}`,
-      session_id: sessionId,
+      session_id: currentSessionId,
       role: 'user',
       content: text,
       actions: null,
@@ -141,7 +179,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId, routineId, agentId: activeAgentId })
+        body: JSON.stringify({ message: text, sessionId: currentSessionId, routineId, agentId: activeAgentId })
       })
       if (!res.ok) {
 // ... rest of error handling ...
@@ -157,7 +195,9 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       const data = await res.json()
 
       setMessages((prev) => [...prev, {
-        id: `mod-${Date.now()}`,
+        // Use the real DB-assigned UUID so ActionCard can pass it to confirmLogAction
+        // and persist confirmed:true onto the correct chat_messages row.
+        id: data.message?.id ?? `mod-${Date.now()}`,
         session_id: data.sessionId,
         role: 'assistant',
         content: data.message.content,
@@ -165,8 +205,10 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         created_at: new Date().toISOString()
       }])
 
-      if (data.sessionId !== sessionId) {
-        router.replace(`/chat/${data.sessionId}${routineId ? `?routine=${routineId}` : ''}`, { scroll: false })
+      // BUG 6 fix: use internal state + History API to avoid Next.js page remount
+      if (data.sessionId !== currentSessionId) {
+        setCurrentSessionId(data.sessionId)
+        window.history.replaceState(null, '', `/chat/${data.sessionId}${routineId ? `?routine=${routineId}` : ''}`)
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
@@ -226,7 +268,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
 
     const optimistic: ChatMessage = {
       id: `opt-${Date.now()}`,
-      session_id: sessionId,
+      session_id: currentSessionId,
       role: 'user',
       content: trimmed || (attachedFiles.length > 0 ? '' : '[Empty]'),
       actions: null,
@@ -245,7 +287,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmed,
-          sessionId,
+          sessionId: currentSessionId,
           agentId: activeAgentId,
           attachments: attachedFiles.map(af => af.attachment)
         })
@@ -289,8 +331,15 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         }
       }
 
-      if (data.sessionId !== sessionId) {
-        router.replace(`/chat/${data.sessionId}`, { scroll: false })
+      // BUG 6 fix: use internal state + History API to avoid Next.js page remount
+      if (data.sessionId !== currentSessionId) {
+        setCurrentSessionId(data.sessionId)
+        const routineParam = searchParams.get('routine')
+        window.history.replaceState(
+          null,
+          '',
+          `/chat/${data.sessionId}${routineParam ? `?routine=${routineParam}` : ''}`
+        )
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
@@ -299,13 +348,101 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     }
   }
 
+  // BUG 4: Save Chat handler
+  async function handleSaveChat(): Promise<void> {
+    if (!saveTitle.trim() || currentSessionId === 'new') return
+    setIsSaving(true)
+    try {
+      const res = await renameSessionAction(currentSessionId, saveTitle.trim())
+      if (res.success) {
+        setSession(prev => prev ? { ...prev, title: saveTitle.trim() } : prev)
+        setIsSaveModalOpen(false)
+        setSaveTitle('')
+        router.refresh()
+      }
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   const activeAgent = agents.find(a => a.id === activeAgentId)
 
   return (
     <div className="relative flex h-full flex-col bg-background text-foreground">
+      {/* BUG 3: Mobile sidebar overlay */}
+      {isMobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          />
+          {/* Sidebar panel */}
+          <div className="absolute left-0 top-0 h-full w-72 animate-in slide-in-from-left-4 duration-300">
+            <ChatSidebar
+              sessions={sessions}
+              currentSessionId={currentSessionId}
+              onMobileClose={() => setIsMobileSidebarOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* BUG 4: Save Chat Modal */}
+      {isSaveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setIsSaveModalOpen(false)}
+          />
+          <div className="relative w-full max-w-sm rounded-3xl border border-white/10 bg-[#0A0A0A] p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="mb-1 text-base font-black tracking-tight text-textPrimary">Save Chat</h3>
+            <p className="mb-4 text-xs text-textMuted/60">Give this conversation a name to save it permanently.</p>
+            <input
+              autoFocus
+              type="text"
+              value={saveTitle}
+              onChange={(e) => setSaveTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleSaveChat()
+                if (e.key === 'Escape') setIsSaveModalOpen(false)
+              }}
+              placeholder="Chat name..."
+              className="mb-4 w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2.5 text-sm text-textPrimary placeholder-textMuted/20 focus:border-white/30 focus:outline-none focus:ring-1 focus:ring-white/10"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSaveChat()}
+                disabled={isSaving || !saveTitle.trim()}
+                className="flex-1 rounded-xl bg-nutrition px-4 py-2.5 text-xs font-black uppercase tracking-widest text-black transition-all hover:scale-[1.02] disabled:opacity-40"
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSaveModalOpen(false)}
+                className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-textMuted transition-colors hover:text-textPrimary"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Header */}
-      <div className="bg-card/60 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-6 py-3">
+      <div className="bg-card/60 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-4 py-3 md:px-6">
         <div className="flex items-center gap-3">
+          {/* BUG 3: Hamburger button — mobile only */}
+          <button
+            type="button"
+            onClick={() => setIsMobileSidebarOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-textMuted transition-colors hover:bg-white/[0.06] hover:text-textPrimary md:hidden"
+            aria-label="Open sidebar"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
           <div className={`flex h-10 w-10 items-center justify-center rounded-2xl transition-all duration-300 ${
             currentRoutine
               ? 'bg-nutrition/10 shadow-[0_0_16px_rgba(16,185,129,0.2)]'
@@ -333,13 +470,27 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* BUG 4: Save Chat button — shown when session is unnamed */}
+          {(!session || session.title === 'New Chat') && currentSessionId !== 'new' && (
+            <button
+              type="button"
+              onClick={() => {
+                const suggestion = messages.find(m => m.role === 'user')?.content?.slice(0, 30) ?? 'My Chat'
+                setSaveTitle(suggestion)
+                setIsSaveModalOpen(true)
+              }}
+              className="rounded-full border border-nutrition/30 bg-nutrition/[0.08] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-nutrition/80 transition-all hover:bg-nutrition/20 hover:text-nutrition"
+            >
+              Save Chat
+            </button>
+          )}
           {activeAgentId ? (
-            <div className="rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-primary shadow-[0_0_12px_rgba(168,85,247,0.15)]">
+            <div className="hidden rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-primary shadow-[0_0_12px_rgba(168,85,247,0.15)] sm:block">
               Persistent Mode
             </div>
           ) : (
-            <div className="rounded-full bg-white/[0.03] border border-white/[0.06] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground/30">
+            <div className="hidden rounded-full bg-white/[0.03] border border-white/[0.06] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground/30 sm:block">
               Temporary Mode
             </div>
           )}
@@ -357,8 +508,8 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-10 space-y-6 lg:px-12">
+      {/* Messages — invisible until hydrated to prevent first-paint flash */}
+      <div className={`flex-1 overflow-y-auto px-4 py-10 space-y-6 lg:px-12 ${!isHydrated ? 'invisible' : ''}`}>
         {error && (
           <div className="mb-6 flex items-center justify-between rounded-2xl bg-red-500/[0.08] border border-red-500/20 px-4 py-3 text-sm text-red-300 animate-in slide-in-from-top-2 backdrop-blur-sm">
             <div className="flex items-center gap-3">
@@ -439,6 +590,8 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
                     <ActionCard
                       key={idx}
                       card={card}
+                      messageId={message.id}
+                      cardIndex={idx}
                       onConfirmed={
                         // When a routine is active, silently send a continue signal so the
                         // AI immediately prompts for the next step without user typing "next".
@@ -525,7 +678,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
                 }
               }}
               placeholder="Speak to YAHA..."
-              className="flex-1 bg-transparent py-2.5 text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none md:text-base resize-none"
+              className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none md:text-base resize-none"
             />
 
             <button

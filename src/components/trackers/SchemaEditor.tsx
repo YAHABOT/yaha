@@ -125,9 +125,11 @@ export function SchemaEditor({ tracker }: Props): React.ReactElement {
       )}
 
       {/* Main Container */}
-      <div className="rounded-[40px] border border-white/5 bg-black/40 p-8 backdrop-blur-xl shadow-2xl overflow-hidden relative group/container">
-        {/* Glow effect */}
-        <div className="absolute -top-24 -right-24 h-48 w-48 blur-[100px] pointer-events-none opacity-10" style={{ backgroundColor: tracker.color }} />
+      <div className="rounded-2xl md:rounded-[40px] border border-white/5 bg-black/40 p-4 md:p-8 backdrop-blur-xl shadow-2xl relative group/container">
+        {/* Glow effect — overflow-hidden scoped here so it never clips child content */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl md:rounded-[40px]">
+          <div className="absolute -top-24 -right-24 h-48 w-48 blur-[100px] opacity-10" style={{ backgroundColor: tracker.color }} />
+        </div>
         
         <div className="relative space-y-8">
           {/* Header Status */}
@@ -194,8 +196,8 @@ export function SchemaEditor({ tracker }: Props): React.ReactElement {
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-between border-t border-white/5 pt-8">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-4 border-t border-white/5 pt-8 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
               <button
                 type="button"
                 onClick={handleSave}
@@ -224,8 +226,8 @@ export function SchemaEditor({ tracker }: Props): React.ReactElement {
 
             {/* Delete Trigger */}
             {showDeleteConfirm ? (
-              <div className="flex items-center gap-2 animate-in zoom-in-95 duration-200">
-                <span className="text-[10px] font-black uppercase tracking-widest text-red-500 mr-2">Are you sure?</span>
+              <div className="flex flex-col gap-2 animate-in zoom-in-95 duration-200 sm:flex-row sm:items-center">
+                <span className="text-[10px] font-black uppercase tracking-widest text-red-500">Are you sure?</span>
                 <button
                   type="button"
                   onClick={handleDelete}

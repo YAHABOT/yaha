@@ -51,6 +51,15 @@ function buildDaySummary(logs?: DayLog[]): string {
   }).join('\n')
 }
 
+const MULTI_FIELD_PROMPT_RULE = `
+## 🔴 MANDATORY MULTI-FIELD FORMAT RULE
+When asking the user to provide 2 or more data points in a single message, you MUST present each one as a separate bullet on its own line. Example:
+- Sleep Score
+- Time in Bed
+- Actual Sleep Time
+NEVER use run-on paragraphs or comma-separated inline lists for multi-field requests. This format is non-negotiable and must never regress to paragraph style.
+`
+
 const GLOBAL_ANTI_HALLUCINATION_RULES = `
 ## 🛑 CRITICAL ANTI-HALLUCINATION RULES
 1. **The "7777" Guard**: If the user provides a single number (e.g., "77"), log it exactly ONCE. Never double it (e.g., "7777") and never log the same value to two different fields (e.g., don't log "77" as both Weight and Calories).
@@ -59,6 +68,8 @@ const GLOBAL_ANTI_HALLUCINATION_RULES = `
 4. **Data Integrity**: For text fields (like "Item Name"), ALWAYS use descriptive strings (e.g., "Huda Beer 300ml"). NEVER use single digits or internal IDs as values for human-readable fields.
 5. **System Time Priority**: Today is {{TODAY}}. Always log data for {{TODAY}} unless the user explicitly says "log for yesterday" or "backdate to [date]".
 6. **Atomic Logging**: Each DISTINCT food item, supplement, or entity MUST be its own separate LOG_DATA action. NEVER combine multiple items into one entry. Example: "Burger and Cola" = TWO LOG_DATA actions (one for Burger, one for Cola), NOT one entry called "Burger & Cola". If the user mentions 3 items, produce 3 separate LOG_DATA actions.
+7. **Tracker ID Rule**: The \`trackerId\` field in LOG_DATA MUST be the exact UUID \`id:\` value from the Available Trackers list (e.g. 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'). NEVER use tracker names, descriptions, or any placeholder text as \`trackerId\`. If you cannot find the tracker's exact ID in the list, do NOT output a LOG_DATA action.
+8. **Tracker Creation Flow**: If you help the user CREATE a new tracker in this conversation, do NOT output a LOG_DATA action for that tracker in the same response. The tracker needs to be saved first. After creation, tell the user it's ready and they can now log to it.
 `
 
 const FEW_SHOT_EXAMPLES = `
@@ -66,7 +77,7 @@ const FEW_SHOT_EXAMPLES = `
 User: "I just had a Huda beer."
 Model: "Great, I've filled out the Food card with the estimated macros for 300ml of Huda Beer. You can adjust the quantities on the card if they're different!"
 \`\`\`json
-[{"type": "LOG_DATA", "trackerId": "TRACKER_ID", "trackerName": "Food", "fields": {"fld_item": "Huda Beer (300ml)", "fld_calories": 120, "fld_protein": 1, "fld_carbs": 9, "fld_fat": 0}, "fieldLabels": {"fld_item": "Item Name", "fld_calories": "Calories", "fld_protein": "Protein", "fld_carbs": "Carbs", "fld_fat": "Fat"}, "date": "{{TODAY}}"}]
+[{"type": "LOG_DATA", "trackerId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "trackerName": "Food", "fields": {"fld_item": "Huda Beer (300ml)", "fld_calories": 120, "fld_protein": 1, "fld_carbs": 9, "fld_fat": 0}, "fieldLabels": {"fld_item": "Item Name", "fld_calories": "Calories", "fld_protein": "Protein", "fld_carbs": "Carbs", "fld_fat": "Fat"}, "date": "{{TODAY}}"}]
 \`\`\`
 `
 
@@ -96,6 +107,7 @@ ${trackerSection}
 5. Append a JSON block after your conversational response.
 6. Keep responses under 3 sentences.
 
+${MULTI_FIELD_PROMPT_RULE}
 ${FEW_SHOT_EXAMPLES.replace(/{{TODAY}}/g, today)}
 `
 }
@@ -176,6 +188,8 @@ ${summary}
 Tracker ID: \`${currentStep.trackerId}\`
 Metric IDs: \`${currentStep.targetFields.join(', ')}\`
 Units: \`${currentUnits}\`
+
+${MULTI_FIELD_PROMPT_RULE}
 
 ## 🔴 MANDATORY OUTPUT RULE
 **ALWAYS append a JSON block after your conversational response when collecting data. NEVER skip the JSON block.** Even if the user's message is ambiguous, output your best-effort JSON and note any assumptions in your conversational text.

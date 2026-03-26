@@ -56,9 +56,21 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
       const val = log.fields[field.fieldId]
       original[field.fieldId] = val
       if (val !== null && val !== undefined) {
-        // Format the value for display (e.g., duration 6.7 → "6h 42m")
-        const formatted = formatFieldValue(val, field.unit, field.label)
-        raw[field.fieldId] = formatted === '---' ? String(val) : formatted
+        if (field.type === 'time' && typeof val === 'number') {
+          // DB stores duration as decimal hours (e.g. 6.133 = 6h 8m).
+          // <input type="time"> requires exactly "HH:MM" — decimal is invalid and shows "--:--".
+          const totalMinutes = Math.round(val * 60)
+          const h = Math.floor(totalMinutes / 60) % 24
+          const m = totalMinutes % 60
+          raw[field.fieldId] = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+        } else if (field.type === 'number' || field.type === 'rating') {
+          // Use the raw numeric value directly. formatFieldValue appends the unit suffix
+          // (e.g. "94 %", "72 bpm") which <input type="number"> treats as NaN → blank field.
+          raw[field.fieldId] = String(val)
+        } else {
+          const formatted = formatFieldValue(val, field.unit, field.label)
+          raw[field.fieldId] = formatted === '---' ? String(val) : formatted
+        }
       } else {
         raw[field.fieldId] = ''
       }
@@ -90,14 +102,25 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
           if (field.type === 'number' || field.type === 'rating') {
             const parsed = Number(raw)
             newValue = Number.isNaN(parsed) ? null : parsed
+          } else if (field.type === 'time') {
+            // If the original DB value was a decimal number (duration in hours),
+            // convert the edited "HH:MM" string back to decimal for consistent storage.
+            if (typeof original === 'number' && /^\d{1,2}:\d{2}$/.test(raw)) {
+              const [h, m] = raw.split(':').map(Number)
+              newValue = h + m / 60
+            } else {
+              newValue = raw || null
+            }
           } else {
             newValue = raw
           }
         }
 
         // Only include fields that were actually modified (dirty fields pattern)
-        // Compare the new value with the original value
-        if (newValue !== original) {
+        // Explicit null guard: never patch a field with null — the merge in updateLog
+        // already preserves existing values; including null would overwrite them.
+        const hasChanged = newValue !== original
+        if (hasChanged && newValue !== null) {
           fields[field.fieldId] = newValue as never
         }
       }
@@ -184,6 +207,16 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
           )}
         </div>
       </div>
+
+      {/* Editing banner — high-visibility indicator that the card is in edit mode */}
+      {isEditing && (
+        <div className="mb-3 flex items-center gap-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.08] px-3 py-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
+          <span className="text-[11px] font-black uppercase tracking-widest text-blue-400">
+            Editing — confirm or cancel changes
+          </span>
+        </div>
+      )}
 
       {/* Edit error */}
       {isEditing && editError && (

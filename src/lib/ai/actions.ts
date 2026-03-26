@@ -138,17 +138,18 @@ export function sanitizeFields(
 
     if (raw === undefined) continue
 
-    // Handle duration strings like "06:08", "7h 13m", "1:05"
-    if (typeof raw === 'string' && (raw.includes(':') || raw.toLowerCase().includes('h') || raw.toLowerCase().includes('m'))) {
+    // Handle duration strings like "06:08", "7h 13m", "1:05" — ONLY for time fields.
+    // Never run on text fields: "500ml", "morning", etc. all contain 'm' or 'h' and
+    // would otherwise get corrupted into decimal hours.
+    if (schemaDef.type === 'time' && typeof raw === 'string' && (raw.includes(':') || /\d+\s*h/i.test(raw) || /\d+\s*m(?!l)/i.test(raw))) {
       const match = raw.match(/(\d+)\s*h?[:\s]\s*(\d+)\s*m?/)
       if (match) {
         const h = parseInt(match[1], 10)
         const m = parseInt(match[2], 10)
         raw = h + m / 60
       } else {
-        // Try single number match for "7h" or "13m"
-        const hMatch = raw.match(/(\d+)\s*h/)
-        const mMatch = raw.match(/(\d+)\s*m/)
+        const hMatch = raw.match(/(\d+)\s*h/i)
+        const mMatch = raw.match(/(\d+)\s*m(?!l)/i)
         if (hMatch || mMatch) {
           raw = (hMatch ? parseInt(hMatch[1], 10) : 0) + (mMatch ? parseInt(mMatch[1], 10) / 60 : 0)
         }

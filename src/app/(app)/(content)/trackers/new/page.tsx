@@ -4,7 +4,7 @@ import { CreateTrackerForm } from '@/components/trackers/CreateTrackerForm'
 
 export default function NewTrackerPage(): React.ReactElement {
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-2xl px-4">
       <div className="mb-6">
         <Link
           href="/trackers"
@@ -16,7 +16,7 @@ export default function NewTrackerPage(): React.ReactElement {
         <h1 className="text-2xl font-bold text-textPrimary">New Tracker</h1>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-6">
+      <div className="rounded-xl border border-border bg-surface p-4 sm:p-6">
         <CreateTrackerForm />
       </div>
     </div>

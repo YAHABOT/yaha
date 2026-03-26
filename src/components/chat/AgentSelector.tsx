@@ -31,14 +31,14 @@ export function AgentSelector({ agents, activeAgentId, onSelect }: Props): React
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-3 rounded-2xl border px-4 py-2 transition-all outline-none animate-in fade-in duration-500 ${
+        className={`flex items-center gap-1.5 sm:gap-3 rounded-xl sm:rounded-2xl border px-2 py-1.5 sm:px-4 sm:py-2 transition-all outline-none animate-in fade-in duration-500 ${
           activeAgent 
             ? 'border-primary/40 bg-primary/10 text-primary shadow-[0_0_20px_rgba(255,255,255,0.05)]' 
             : 'border-white/10 bg-white/5 text-textMuted hover:bg-white/10 hover:border-white/20'
         }`}
       >
         <div className={`h-1.5 w-1.5 rounded-full ${activeAgent ? 'bg-primary animate-pulse' : 'bg-white/20'}`} />
-        <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+        <span className="hidden text-[10px] font-black uppercase tracking-[0.2em] sm:inline">
           {activeAgent ? activeAgent.name : 'Quick Log'}
         </span>
         <ChevronDown className={`h-3 w-3 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />

@@ -23,31 +23,39 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
       <div className="flex h-full">
         <ChatSidebar sessions={sessions} />
         <div className="flex flex-1 flex-col bg-background">
-          <ChatInterface 
-            initialMessages={[]} 
-            sessionId="new" 
-            session={null} 
+          <ChatInterface
+            initialMessages={[]}
+            sessionId="new"
+            session={null}
             initialRoutine={initialRoutine}
+            sessions={sessions}
+            currentSessionId="new"
           />
         </div>
       </div>
     )
   }
 
-  // Flatten the waterfall: fetch sessions, session metadata, and messages all in parallel.
-  // getRoutine needs active_routine_id from the session, so it runs in a second microtask —
-  // but getMessages no longer waits on getSession, eliminating the main bottleneck.
-  const [sessions, session, messages] = await Promise.all([
-    getSessions(),
+  // Two-phase parallel fetch:
+  // Phase 1: fire getSessions early (it doesn't need session data) while also
+  //   fetching session metadata + messages simultaneously.
+  // Phase 2: join getSessions with getRoutine (which needs active_routine_id from phase 1).
+  //   This eliminates any case where a slow getSessions delays the final render.
+  const sessionsPromise = getSessions()
+
+  const [session, messages] = await Promise.all([
     getSession(sessionId).catch(() => null),
     getMessages(sessionId).catch(() => [] as Awaited<ReturnType<typeof getMessages>>),
   ])
 
   if (!session) notFound()
 
-  const routine = session.active_routine_id
-    ? await getRoutine(session.active_routine_id).catch(() => null)
-    : null
+  const [sessions, routine] = await Promise.all([
+    sessionsPromise,
+    session.active_routine_id
+      ? getRoutine(session.active_routine_id).catch(() => null)
+      : Promise.resolve(null),
+  ])
 
   const sessionData = { session, messages, routine }
 
@@ -55,11 +63,13 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
     <div className="flex h-full">
       <ChatSidebar sessions={sessions} currentSessionId={sessionId} />
       <div className="flex flex-1 flex-col bg-background">
-        <ChatInterface 
-          initialMessages={sessionData.messages} 
-          sessionId={sessionId} 
-          session={sessionData.session} 
+        <ChatInterface
+          initialMessages={sessionData.messages}
+          sessionId={sessionId}
+          session={sessionData.session}
           initialRoutine={sessionData.routine}
+          sessions={sessions}
+          currentSessionId={sessionId}
         />
       </div>
     </div>

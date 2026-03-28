@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { notFound } from 'next/navigation'
 import { getSessions, getSession, getMessages } from '@/lib/db/chat'
 import { getRoutine } from '@/lib/db/routines'
@@ -22,14 +24,13 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
     return (
       <div className="flex h-full">
         <ChatSidebar sessions={sessions} />
-        <div className="flex flex-1 flex-col bg-background">
+        <div className="flex flex-1 flex-col min-h-0 bg-background">
           <ChatInterface
             initialMessages={[]}
             sessionId="new"
             session={null}
             initialRoutine={initialRoutine}
             sessions={sessions}
-            currentSessionId="new"
           />
         </div>
       </div>
@@ -62,14 +63,13 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
   return (
     <div className="flex h-full">
       <ChatSidebar sessions={sessions} currentSessionId={sessionId} />
-      <div className="flex flex-1 flex-col bg-background">
+      <div className="flex flex-1 flex-col min-h-0 bg-background">
         <ChatInterface
           initialMessages={sessionData.messages}
           sessionId={sessionId}
           session={sessionData.session}
           initialRoutine={sessionData.routine}
           sessions={sessions}
-          currentSessionId={sessionId}
         />
       </div>
     </div>

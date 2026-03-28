@@ -10,7 +10,7 @@ const MESSAGES_DISPLAY_LIMIT = 100
 const SESSION_REUSE_WINDOW_MS = 10_000
 
 const SESSION_COLUMNS = 'id, user_id, title, active_routine_id, current_step_index, active_agent_id, updated_at'
-const MESSAGE_COLUMNS = 'id, session_id, role, content, actions, created_at'
+const MESSAGE_COLUMNS = 'id, session_id, role, content, actions, attachments, created_at'
 
 export async function getSessions(): Promise<ChatSession[]> {
   const supabase = await createServerClient()
@@ -33,11 +33,13 @@ export async function getSessions(): Promise<ChatSession[]> {
   ])
   const deletedSessionIds = await cleanupWithTimeout
 
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+
   const { data, error } = await supabase
     .from('chat_sessions')
     .select(SESSION_COLUMNS)
     .eq('user_id', user.id)
-    .neq('title', DEFAULT_SESSION_TITLE)
+    .or(`title.neq.${DEFAULT_SESSION_TITLE},updated_at.gte.${tenMinutesAgo}`)
     .order('updated_at', { ascending: false })
     .limit(SESSIONS_SIDEBAR_LIMIT)
 

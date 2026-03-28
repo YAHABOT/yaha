@@ -2,20 +2,22 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createSession, getSession, addMessage, updateSession, getRecentMessagesForAI } from '@/lib/db/chat'
 import { getTrackersBasic } from '@/lib/db/trackers'
 import { getLogsForDay } from '@/lib/db/logs'
-import { getRoutine as fetchRoutine, getRoutines } from '@/lib/db/routines'
+import { getRoutine as fetchRoutine } from '@/lib/db/routines'
 import { processHealthMessage } from '@/lib/ai/gemini'
 import { sanitizeFields } from '@/lib/ai/actions'
 import { buildHealthSystemPrompt, buildRoutineSystemPrompt } from '@/lib/ai/prompt-builder'
 import { detectRoutineTrigger } from '@/lib/routines/detector'
 import { markDayStarted, markDayEnded } from '@/lib/db/day-state'
 import { getMasterBrainContext } from '@/lib/ai/master-brain'
-import type { ChatAttachment, ChatInput, ActionCard } from '@/types/action-card'
+import type { ChatAttachment, ChatInput, AnyActionCard } from '@/types/action-card'
 import type { ChatSession } from '@/types/chat'
 import type { Routine } from '@/types/routine'
 import type { Agent } from '@/types/agent'
 
 const MAX_MESSAGE_LENGTH = 4000
 
+// Must stay in sync with ALLOWED_MIME_TYPES in src/lib/ai/gemini.ts — only accept types Gemini can process.
+// Office formats (docx/xlsx/xls) are removed because Gemini's inlineData API does not support them.
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -28,6 +30,8 @@ const ALLOWED_MIME_TYPES = new Set([
   'audio/flac',
   'audio/aac',
   'application/pdf',
+  'text/plain',
+  'text/csv',
 ])
 
 type ChatRequestBody = {
@@ -48,7 +52,7 @@ type ChatResponseMessage = {
   id: string          // Real DB UUID — passed to ActionCard so confirmLogAction can persist confirmed:true
   role: 'assistant'
   content: string
-  actions: ActionCard[]
+  actions: AnyActionCard[]
 }
 
 type ChatResponse = {
@@ -91,6 +95,7 @@ export async function POST(req: Request): Promise<Response> {
     const msgPreview = message ? message.substring(0, 50) : '[image-only]'
     console.log(`[ChatRoute] Request: session=${sessionId}, routine=${routineId}, msg="${msgPreview}..."`)
 
+
     if (!hasAttachments && (!message || typeof message !== 'string' || message.trim().length === 0)) {
       return Response.json({ error: 'Message is required' }, { status: 400 })
     }
@@ -131,53 +136,80 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     // 1. Detect Routine Trigger (Prioritize explicit routineId)
+    // FIX-7: run all independent DB fetches in parallel — routine detection,
+    // trackers, agents, brain context, chat history, and day logs all fire at once.
+    // This eliminates sequential Supabase round-trips that caused >1 min latency.
+    const today = new Date().toISOString().split('T')[0]
+
+    const [
+      trackers,
+      agents,
+      brainContext,
+      historyMessages,
+      dayLogs,
+      activeRoutineRaw,
+      routineMatchResult,
+    ] = await Promise.all([
+      getTrackersBasic(supabase),
+      import('@/lib/db/agents').then(m => m.getAgents()),
+      getMasterBrainContext(),
+      getRecentMessagesForAI(session.id, 10),
+      getLogsForDay(today, supabase),
+      // Always try to fetch the currently active routine (null if none)
+      session.active_routine_id ? fetchRoutine(session.active_routine_id) : Promise.resolve(null),
+      // Run NL routine detection in parallel only when there's no active routine and no explicit id
+      (!session.active_routine_id && !routineId && message)
+        ? detectRoutineTrigger(message)
+        : Promise.resolve(null),
+    ])
+
     let activeRoutine: Routine | null = null
 
-    if (session.active_routine_id) {
-       activeRoutine = await fetchRoutine(session.active_routine_id)
+    if (activeRoutineRaw) {
+      activeRoutine = activeRoutineRaw
     } else if (routineId) {
       // Direct routine hit from Dashboard button
       const routine = await fetchRoutine(routineId)
       if (routine) {
         console.log(`[ChatRoute] Activating routine from ID: ${routine.name}`)
-        await updateSession(session.id, { 
+        await updateSession(session.id, {
           active_routine_id: routine.id,
-          current_step_index: 0 
+          current_step_index: 0
         })
         session.active_routine_id = routine.id
         session.current_step_index = 0
         activeRoutine = routine
       }
-    } else {
-      // Natural language detection
-      const routineMatch = message ? await detectRoutineTrigger(message) : null
-      if (routineMatch) {
-        console.log(`[ChatRoute] Detected routine from text: ${routineMatch.name}`)
-        await updateSession(session.id, { 
-          active_routine_id: routineMatch.id,
-          current_step_index: 0 
-        })
-        session.active_routine_id = routineMatch.id
-        session.current_step_index = 0
-        activeRoutine = routineMatch
-      }
+    } else if (routineMatchResult) {
+      const routineMatch = routineMatchResult
+      console.log(`[ChatRoute] Detected routine from text: ${routineMatch.name}`)
+      await updateSession(session.id, {
+        active_routine_id: routineMatch.id,
+        current_step_index: 0
+      })
+      session.active_routine_id = routineMatch.id
+      session.current_step_index = 0
+      activeRoutine = routineMatch
     }
 
-    // Parallel fetch for speed
-    const today = new Date().toISOString().split('T')[0]
-    const [trackers, agents, brainContext, historyMessages, dayLogs] = await Promise.all([
-      getTrackersBasic(supabase),
-      import('@/lib/db/agents').then(m => m.getAgents()),
-      getMasterBrainContext(),
-      getRecentMessagesForAI(session.id, 10),
-      getLogsForDay(today, supabase)
-    ])
-
-    // Map history for Gemini
-    const history = historyMessages.map(msg => ({
-      role: (msg.role === 'assistant' ? 'model' : 'user') as 'model' | 'user',
-      parts: [{ text: msg.content }]
-    }))
+    // Map history for Gemini — include stored image attachments so follow-up
+    // messages like "use the photos I just sent" have the images in context.
+    type ContentPart = { text: string } | { inlineData: { mimeType: string; data: string } }
+    const history = historyMessages.map(msg => {
+      const parts: ContentPart[] = []
+      if (msg.content) parts.push({ text: msg.content })
+      if (msg.attachments) {
+        const attachArr = msg.attachments as Array<{ mimeType: string; base64: string }>
+        for (const att of attachArr) {
+          parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64 } })
+        }
+      }
+      if (parts.length === 0) parts.push({ text: '' })
+      return {
+        role: (msg.role === 'assistant' ? 'model' : 'user') as 'model' | 'user',
+        parts,
+      }
+    })
 
     // 2. Detect Agent Switching
     let activeAgent: Agent | null = null
@@ -217,7 +249,11 @@ export async function POST(req: Request): Promise<Response> {
       systemPrompt = buildRoutineSystemPrompt(activeRoutine, trackers, session.current_step_index, brainContext, dayLogs)
     } else if (activeAgent) {
       console.log(`[ChatRoute] Using agent prompt: ${activeAgent.name}`)
-      systemPrompt = activeAgent.system_prompt
+      // Combine agent personality with full YAHA health capabilities so the agent
+      // can still see photos, produce LOG_DATA action cards, and access tracker schema.
+      // Agent system_prompt provides personality/focus; YAHA section provides logging pipeline.
+      const yahaSection = buildHealthSystemPrompt({ trackers, date, userContext: brainContext, dayLogs })
+      systemPrompt = `${activeAgent.system_prompt}\n\n---\n## YAHA HEALTH LOGGING CAPABILITIES\n${yahaSection}`
     } else {
       console.log(`[ChatRoute] Using standard health prompt.`)
       systemPrompt = buildHealthSystemPrompt({ trackers, date, userContext: brainContext, dayLogs })
@@ -234,15 +270,17 @@ export async function POST(req: Request): Promise<Response> {
     // 3. Process message through Gemini
     const { text, actions } = await processHealthMessage(chatInput, systemPrompt, history)
 
-    // Sanitize actions against tracker schema
-    const sanitizedActions = actions.map(action => {
+    // Sanitize actions against tracker schema — only applies to LOG_DATA cards.
+    // CREATE_TRACKER cards pass through as-is; they contain schema definition not logged fields.
+    const sanitizedActions: AnyActionCard[] = actions.map(action => {
+      if (action.type !== 'LOG_DATA') return action
       const tracker = trackers.find(t => t.id === action.trackerId)
       if (tracker) {
         // Enforce DB schema for labels and units - ignore Gemini's hallucinations
         const schema = tracker.schema
         const fieldLabels: Record<string, string> = {}
         const fieldUnits: Record<string, string> = {}
-        
+
         // fieldOrder is an array — arrays preserve order in JSONB unlike object keys
         const fieldOrder: string[] = []
         schema.forEach(f => {
@@ -264,11 +302,21 @@ export async function POST(req: Request): Promise<Response> {
       return action
     })
 
+    // Detect skip intent so we do NOT attempt to log a skipped step.
+    // A skip advances the step counter without writing to tracker_logs.
+    const SKIP_KEYWORDS = ['skip', 'pass', 'next step', 'skip this', 'skip that']
+    const isSkipIntent = message
+      ? SKIP_KEYWORDS.some(kw => message.toLowerCase().includes(kw))
+      : false
+
     // 4. Advance Routine Step?
     // If the model produced actions for the tracker in the current step, advance.
     if (activeRoutine) {
       const currentStep = activeRoutine.steps[session.current_step_index]
-      const hasLoggedCurrentStep = sanitizedActions.some(a => a.trackerId === currentStep.trackerId)
+      // On skip, advance without logging. Otherwise check if a LOG_DATA action was produced.
+      const hasLoggedCurrentStep = isSkipIntent
+        ? true
+        : sanitizedActions.some(a => a.type === 'LOG_DATA' && a.trackerId === currentStep.trackerId)
       
       if (hasLoggedCurrentStep) {
         const nextStepIndex = session.current_step_index + 1
@@ -315,11 +363,9 @@ export async function POST(req: Request): Promise<Response> {
   } catch (e: unknown) {
     console.error('[chat/route] CRITICAL ERROR:', e)
     const errorMessage = e instanceof Error ? e.message : String(e)
-    const errorStack = e instanceof Error ? e.stack : 'No stack trace'
-    
-    return Response.json({ 
-      error: errorMessage, 
-      details: errorStack,
+
+    return Response.json({
+      error: errorMessage,
       status: 500
     }, { status: 500 })
   }

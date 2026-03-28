@@ -9,6 +9,8 @@ if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY environment variable is not
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
 
+// Must stay in sync with ALLOWED_MIME_TYPES in src/app/api/chat/route.ts — only types Gemini can process via inlineData.
+// Office formats (docx/xlsx/xls) are intentionally excluded — Gemini does not support binary Office formats as inlineData.
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -21,6 +23,8 @@ const ALLOWED_MIME_TYPES = new Set([
   'audio/flac',
   'audio/aac',
   'application/pdf',
+  'text/plain',
+  'text/csv',
 ])
 
 type ContentPart =

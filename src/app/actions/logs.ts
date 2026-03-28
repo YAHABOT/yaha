@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createLog, updateLog, deleteLog, getLog } from '@/lib/db/logs'
+import { createServerClient } from '@/lib/supabase/server'
 import type { LogFields, LogSource } from '@/types/log'
 
 export async function createLogAction(
@@ -14,6 +15,23 @@ export async function createLogAction(
     if (!trackerId) return { error: 'Tracker ID is required' }
     if (!fields || Object.keys(fields).length === 0) {
       return { error: 'At least one field is required' }
+    }
+
+    // Validate that the tracker belongs to the current user before inserting.
+    // This prevents the raw FK constraint error when the AI hallucinates a UUID.
+    const supabase = await createServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: trackerRow } = await supabase
+      .from('trackers')
+      .select('id')
+      .eq('id', trackerId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!trackerRow) {
+      return { error: 'Tracker not found. The AI may have used an incorrect ID — please try sending your message again.' }
     }
 
     await createLog({

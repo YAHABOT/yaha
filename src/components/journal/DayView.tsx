@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, GitBranch, Eye, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, GitBranch, Eye, Plus, Menu, X } from 'lucide-react'
 import type { Tracker } from '@/types/tracker'
 import type { TrackerLog } from '@/types/log'
 import type { Correlation } from '@/types/correlator'
@@ -64,6 +64,7 @@ function addDays(dateStr: string, n: number): string {
 export function DayView({ date, trackers, logs, loggedDates, correlations }: Props): React.ReactElement {
   const router = useRouter()
   const [correlatorOpen, setCorrelatorOpen] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const today = new Date().toISOString().split('T')[0]
   const isToday = date >= today
 
@@ -79,63 +80,121 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
     router.push(`/journal?date=${d}`)
   }
 
+  // Shared date list — rendered in both desktop sidebar and mobile drawer
+  const dateList = (
+    <>
+      <div className="px-3 pb-2 pt-4">
+        <p className="text-[10px] font-black uppercase tracking-widest text-textMuted">Log Days</p>
+        <p className="mt-0.5 text-xs text-textMuted">{loggedDates.length} days</p>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {allDates.map((d) => {
+          const { day, date: dateNum, label } = formatSidebarDate(d)
+          const isActive = d === date
+          const isCurrentDay = d === today
+          return (
+            <button
+              key={d}
+              onClick={() => { goTo(d); setMobileSidebarOpen(false) }}
+              className={`w-full border-b border-white/[0.03] px-3 py-2.5 text-left transition-all duration-300 ${
+                isActive
+                  ? 'bg-white/[0.04] border-l-2 border-l-primary shadow-[inset_0_0_12px_rgba(163,230,53,0.04)]'
+                  : 'hover:bg-white/[0.02]'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? 'text-primary' : 'text-textMuted'}`}>
+                  {day}
+                </span>
+                {isCurrentDay && (
+                  <span className="rounded-full bg-primary/20 px-1 py-0.5 text-[8px] font-black uppercase tracking-widest text-primary">
+                    Today
+                  </span>
+                )}
+              </div>
+              <div className="flex items-baseline gap-1">
+                <span className={`text-lg font-bold leading-tight ${isActive ? 'text-primary' : 'text-textPrimary'}`}>
+                  {dateNum}
+                </span>
+                <span className="text-[10px] text-textMuted">{label}</span>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </>
+  )
+
   return (
     <div className="flex h-full min-h-0">
-      {/* ── Left Sidebar: Date List ── */}
-      <aside className="hidden w-44 flex-shrink-0 overflow-y-auto border-r border-white/5 bg-surface md:flex md:flex-col">
-        <div className="px-3 pb-2 pt-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-textMuted">Log Days</p>
-          <p className="mt-0.5 text-xs text-textMuted">{loggedDates.length} days</p>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {allDates.map((d) => {
-            const { day, date: dateNum, label } = formatSidebarDate(d)
-            const isActive = d === date
-            const isCurrentDay = d === today
-            return (
+      {/* ── Mobile Drawer Overlay ── */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        >
+          {/* Visual backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-none" />
+          {/* Drawer panel */}
+          <div
+            className="absolute left-0 top-0 z-10 h-full w-56 flex flex-col bg-surface border-r border-white/5 animate-in slide-in-from-left-4 duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Drawer header: action buttons + close */}
+            <div className="flex items-center justify-between border-b border-white/[0.04] px-3 py-3">
+              <div className="flex items-center gap-2">
+                <button className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-textMuted transition-all duration-300 hover:bg-white/[0.05] hover:text-textPrimary">
+                  <Eye className="h-3 w-3" />
+                  View
+                </button>
+                <button
+                  onClick={() => { setCorrelatorOpen(true); setMobileSidebarOpen(false) }}
+                  className="flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-all duration-300 hover:bg-primary/20"
+                >
+                  <GitBranch className="h-3 w-3" />
+                  Cor.
+                </button>
+              </div>
               <button
-                key={d}
-                onClick={() => goTo(d)}
-                className={`w-full border-b border-white/[0.03] px-3 py-2.5 text-left transition-all duration-300 ${
-                  isActive
-                    ? 'bg-white/[0.04] border-l-2 border-l-primary shadow-[inset_0_0_12px_rgba(163,230,53,0.04)]'
-                    : 'hover:bg-white/[0.02]'
-                }`}
+                type="button"
+                onClick={() => setMobileSidebarOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-textMuted hover:bg-white/[0.06] hover:text-textPrimary transition-colors"
+                aria-label="Close day list"
               >
-                <div className="flex items-center justify-between">
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? 'text-primary' : 'text-textMuted'}`}>
-                    {day}
-                  </span>
-                  {isCurrentDay && (
-                    <span className="rounded-full bg-primary/20 px-1 py-0.5 text-[8px] font-black uppercase tracking-widest text-primary">
-                      Today
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className={`text-lg font-bold leading-tight ${isActive ? 'text-primary' : 'text-textPrimary'}`}>
-                    {dateNum}
-                  </span>
-                  <span className="text-[10px] text-textMuted">{label}</span>
-                </div>
+                <X className="h-4 w-4" />
               </button>
-            )
-          })}
+            </div>
+            {dateList}
+          </div>
         </div>
+      )}
+
+      {/* ── Left Sidebar: Date List (desktop only) ── */}
+      <aside className="hidden w-44 flex-shrink-0 overflow-y-auto border-r border-white/5 bg-surface md:flex md:flex-col">
+        {dateList}
       </aside>
 
       {/* ── Main Content ── */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Header bar */}
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-white/5 bg-surface/60 px-4 py-3 backdrop-blur-md">
+        {/* Header bar — sticky top-0 so it pins while content scrolls beneath */}
+        <div className="sticky top-0 z-10 flex flex-shrink-0 items-center justify-between border-b border-white/5 bg-surface/60 px-4 py-3 backdrop-blur-md">
           <div className="flex items-center gap-1.5">
+            {/* Mobile hamburger — hidden on desktop */}
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/[0.03] text-textMuted transition-all duration-200 hover:bg-white/[0.06] hover:text-textPrimary border border-white/5 md:hidden"
+              aria-label="Open day list"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
             <button
               onClick={() => goTo(addDays(date, -1))}
               className="rounded-xl bg-white/[0.03] p-1.5 text-textMuted transition-all duration-300 hover:bg-white/[0.06] hover:text-textPrimary border border-white/5"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <h1 className="px-2 text-sm font-semibold text-textPrimary">{formatHeaderDate(date)}</h1>
+            <h1 className="px-2 text-sm font-semibold text-textPrimary truncate max-w-[160px] md:max-w-none">{formatHeaderDate(date)}</h1>
             <button
               onClick={() => goTo(addDays(date, 1))}
               disabled={isToday}
@@ -145,7 +204,8 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Desktop-only action buttons — hidden on mobile (moved to drawer) */}
+          <div className="hidden md:flex items-center gap-2">
             <button className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-textMuted backdrop-blur-md transition-all duration-300 hover:bg-white/[0.05] hover:text-textPrimary">
               <Eye className="h-3 w-3" />
               View

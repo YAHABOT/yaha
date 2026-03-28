@@ -20,7 +20,7 @@ export default async function AppLayout({
       <MobileBottomNav />
       {/* No padding here — (content)/layout.tsx adds padding for regular pages.
           Chat pages use flex h-full and manage their own scroll internally. */}
-      <main className="md:pl-64 pb-16 md:pb-0 h-full overflow-hidden">
+      <main className="md:pl-64 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0 h-full overflow-hidden">
         {children}
       </main>
     </div>

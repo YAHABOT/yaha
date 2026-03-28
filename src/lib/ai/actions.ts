@@ -1,9 +1,11 @@
-import type { ActionCard } from '@/types/action-card'
+import type { ActionCard, CreateTrackerCard, AnyActionCard } from '@/types/action-card'
 
 const VALID_SOURCES = new Set(['chat', 'telegram', 'manual'])
+const VALID_TRACKER_TYPES = new Set(['nutrition', 'sleep', 'workout', 'mood', 'water', 'custom'])
+const VALID_FIELD_TYPES = new Set(['number', 'text', 'rating', 'time'])
 
-export function parseActionCards(responseText: string): ActionCard[] {
-  const cards: ActionCard[] = []
+export function parseActionCards(responseText: string): AnyActionCard[] {
+  const cards: AnyActionCard[] = []
   const regex = /```json\s*([\s\S]*?)```/g
 
   let match: RegExpExecArray | null
@@ -13,26 +15,86 @@ export function parseActionCards(responseText: string): ActionCard[] {
     let parsed: unknown
     try {
       parsed = JSON.parse(raw)
-    } catch {
+    } catch (e) {
+      console.warn('[parseActionCards] JSON parse failed for block:', raw.substring(0, 100), e)
       continue
     }
 
     if (Array.isArray(parsed)) {
       for (const item of parsed) {
-        const card = validateActionCard(item)
+        const card = validateAnyCard(item)
         if (card !== null) {
           cards.push(card)
         }
       }
     } else {
-      const card = validateActionCard(parsed)
+      const card = validateAnyCard(parsed)
       if (card !== null) {
         cards.push(card)
       }
     }
   }
 
+  // Fallback: if no JSON blocks found, try to find raw JSON at the end of the response
+  // This handles cases where Gemini outputs JSON without markdown fencing
+  if (cards.length === 0) {
+    const jsonMatch = responseText.match(/\[\s*\{[\s\S]*?\}\s*\](?!.*\[)/)
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0])
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            const card = validateAnyCard(item)
+            if (card !== null) {
+              cards.push(card)
+            }
+          }
+        }
+        if (cards.length > 0) {
+          console.log('[parseActionCards] Recovered action cards from unfenced JSON')
+        }
+      } catch (e) {
+        console.warn('[parseActionCards] Fallback JSON extraction failed:', e)
+      }
+    }
+  }
+
   return cards
+}
+
+function validateAnyCard(card: unknown): AnyActionCard | null {
+  if (!card || typeof card !== 'object') return null
+  const c = card as Record<string, unknown>
+  if (c.type === 'CREATE_TRACKER') return validateCreateTrackerCard(c)
+  return validateActionCard(card)
+}
+
+export function validateCreateTrackerCard(c: Record<string, unknown>): CreateTrackerCard | null {
+  if (typeof c.name !== 'string' || c.name.trim().length === 0) return null
+  const trackerType = VALID_TRACKER_TYPES.has(c.trackerType as string)
+    ? (c.trackerType as CreateTrackerCard['trackerType'])
+    : 'custom'
+  const color = typeof c.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(c.color)
+    ? c.color
+    : '#10b981'
+
+  const rawSchema = Array.isArray(c.schema) ? c.schema : []
+  const schema: CreateTrackerCard['schema'] = rawSchema
+    .filter((f): f is Record<string, unknown> => !!f && typeof f === 'object')
+    .map(f => ({
+      fieldId: typeof f.fieldId === 'string' ? f.fieldId : `fld_${Math.random().toString(36).slice(2, 7)}`,
+      label: typeof f.label === 'string' ? f.label : 'Field',
+      type: VALID_FIELD_TYPES.has(f.type as string) ? (f.type as 'number' | 'text' | 'rating' | 'time') : 'text',
+      ...(typeof f.unit === 'string' ? { unit: f.unit } : {}),
+    }))
+
+  return {
+    type: 'CREATE_TRACKER',
+    name: c.name.trim(),
+    trackerType,
+    color,
+    schema,
+  }
 }
 
 export function validateActionCard(card: unknown): ActionCard | null {

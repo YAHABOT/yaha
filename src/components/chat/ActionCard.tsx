@@ -100,10 +100,14 @@ export function ActionCard({ card, messageId, cardIndex, onConfirm, onDiscard, o
 
     console.log('[ActionCard] handleConfirm — messageId:', messageId, 'cardIndex:', cardIndex)
 
-    // Send the EDITED fields, not just the original ones
+    // Strip fields with no value — only persist what the user actually provided
+    const confirmedFields = Object.fromEntries(
+      Object.entries(editableFields).filter(([, v]) => v !== '' && v !== null && v !== undefined)
+    )
+
     const result = await confirmLogAction({
       ...card,
-      fields: editableFields
+      fields: confirmedFields
     }, messageId, cardIndex)
 
     if (result.error) {
@@ -167,7 +171,7 @@ export function ActionCard({ card, messageId, cardIndex, onConfirm, onDiscard, o
 
   return (
     <div
-      className={`animate-in slide-in-from-bottom-4 duration-500 relative flex flex-col gap-4 rounded-3xl border-l-4 border border-white/[0.06] p-6 backdrop-blur-md transition-all ${typeColors.border} ${typeColors.bg} ${typeColors.glow}`}
+      className={`animate-in slide-in-from-bottom-4 duration-500 relative flex flex-col gap-4 rounded-3xl border-l-4 border border-white/[0.06] p-6 backdrop-blur-md transition-all overflow-visible ${typeColors.border} ${typeColors.bg} ${typeColors.glow}`}
       data-testid="action-card"
     >
       {/* Header */}
@@ -194,16 +198,18 @@ export function ActionCard({ card, messageId, cardIndex, onConfirm, onDiscard, o
       </div>
 
       {/* Fields Grid */}
-      <div className={`grid grid-cols-2 gap-2.5 transition-all duration-200 ${isEditExpanded ? 'rounded-2xl ring-1 ring-blue-500/30 p-1' : ''}`}>
+      <div className={`grid grid-cols-2 gap-2.5 transition-all duration-200 w-full min-w-0 overflow-visible ${isEditExpanded ? 'rounded-2xl ring-1 ring-blue-500/30 p-1' : ''}`}>
         {fieldEntries.map(([key, value]) => {
-          const isLarge = String(value || '').length > 20
+          // Promote to col-span-2 at 15 chars — text fields and longer strings get full width
+          // to prevent clipping in a 2-column grid on narrow (375px) screens.
+          const isLarge = String(value || '').length > 15 || card.fieldLabels?.[key]?.toLowerCase().includes('name') || card.fieldLabels?.[key]?.toLowerCase().includes('item') || card.fieldLabels?.[key]?.toLowerCase().includes('notes')
           const label = card.fieldLabels?.[key] || key
           const unit = card.fieldUnits?.[key]
 
           return (
             <div
               key={key}
-              className={`flex flex-col gap-1.5 rounded-2xl bg-white/[0.03] p-3.5 border transition-all duration-200 ${isEditExpanded ? 'border-blue-500/20 bg-blue-500/[0.03]' : 'border-white/[0.05]'} focus-within:border-blue-500/40 focus-within:bg-white/[0.05] ${isLarge ? 'col-span-2' : ''}`}
+              className={`flex flex-col gap-1.5 rounded-2xl bg-white/[0.03] p-3.5 border transition-all duration-200 min-w-0 overflow-visible ${isEditExpanded ? 'border-blue-500/20 bg-blue-500/[0.03]' : 'border-white/[0.05]'} focus-within:border-blue-500/40 focus-within:bg-white/[0.05] ${isLarge ? 'col-span-2' : ''}`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
@@ -216,13 +222,21 @@ export function ActionCard({ card, messageId, cardIndex, onConfirm, onDiscard, o
                 )}
               </div>
 
-              <input
-                type="text"
-                value={value ?? ''}
-                onChange={(e) => handleFieldChange(key, e.target.value)}
-                className="bg-transparent text-sm font-bold text-foreground w-full placeholder:text-muted-foreground/20 leading-snug focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded"
-                placeholder="..."
-              />
+              {isEditExpanded ? (
+                <input
+                  type="text"
+                  value={value ?? ''}
+                  onChange={(e) => handleFieldChange(key, e.target.value)}
+                  className="bg-transparent text-sm font-bold text-foreground w-full placeholder:text-muted-foreground/20 leading-snug focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded"
+                  placeholder="..."
+                />
+              ) : (
+                <p className="text-sm font-bold text-foreground w-full leading-snug break-words whitespace-pre-wrap">
+                  {value !== null && value !== undefined && value !== ''
+                    ? String(value)
+                    : <span className="text-muted-foreground/20">—</span>}
+                </p>
+              )}
             </div>
           )
         })}

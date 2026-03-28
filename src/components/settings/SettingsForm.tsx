@@ -2,25 +2,27 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { 
-  saveSettingsAction 
+import {
+  saveSettingsAction
 } from '@/app/actions/settings'
+import { signOut } from '@/app/actions/auth'
 import type { User } from '@/lib/db/users'
-import { 
-  Bot, 
-  Workflow, 
-  Webhook, 
-  FlaskConical, 
-  ShieldCheck, 
-  Zap, 
-  Clock, 
-  Droplets, 
-  Footprints, 
+import {
+  Bot,
+  Workflow,
+  Webhook,
+  FlaskConical,
+  ShieldCheck,
+  Zap,
+  Clock,
+  Droplets,
+  Footprints,
   Calculator,
   Download,
   Trash2,
   Save,
-  CheckCircle2
+  CheckCircle2,
+  LogOut
 } from 'lucide-react'
 
 const SAVE_RESET_DELAY_MS = 2000
@@ -283,6 +285,19 @@ export function SettingsForm({ initialValues }: Props): React.ReactElement {
           <Trash2 className="h-4 w-4 opacity-40 group-hover:opacity-100 transition-opacity" />
           Clear Local Data
         </button>
+      </div>
+
+      {/* Logout */}
+      <div className="flex items-center justify-center pb-4">
+        <form action={signOut}>
+          <button
+            type="submit"
+            className="group flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-6 py-3 text-[11px] font-black uppercase tracking-widest text-red-400/70 transition-all duration-200 hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400"
+          >
+            <LogOut className="h-4 w-4 opacity-60 group-hover:opacity-100 transition-opacity" />
+            Sign Out
+          </button>
+        </form>
       </div>
 
     </form>

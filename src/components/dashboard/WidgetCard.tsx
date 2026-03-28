@@ -76,7 +76,7 @@ export function WidgetCard({ widget, value, editMode, onDelete }: Props): React.
             className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
             style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}80` }}
           />
-          <span className="truncate text-[10px] font-black uppercase tracking-[0.15em] text-textMuted">
+          <span className="min-w-0 text-[10px] font-black uppercase tracking-[0.15em] text-textMuted leading-tight break-words">
             {value.label}
           </span>
         </div>

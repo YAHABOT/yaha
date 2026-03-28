@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Plus, MessageSquare, Trash2, Check, X, Pencil, CheckSquare, Square, ArrowLeft } from 'lucide-react'
 import type { ChatSession } from '@/types/chat'
 import { deleteSessionAction, deleteSessionsAction, renameSessionAction } from '@/app/actions/chat'
@@ -111,6 +111,15 @@ export function ChatSidebar({ sessions, currentSessionId, onMobileClose }: Props
     setSelectedIds(new Set())
   }
 
+  // When rendered as a mobile overlay, close the sidebar then navigate so the overlay
+  // dismisses cleanly before the route transition begins.
+  const handleNewChat = useCallback(() => {
+    if (onMobileClose) {
+      onMobileClose()
+    }
+    router.push('/chat/new')
+  }, [onMobileClose, router])
+
   const allSelected = sessions.length > 0 && selectedIds.size === sessions.length
 
   // When rendered as a mobile overlay (onMobileClose provided), use full-height panel styling.
@@ -135,13 +144,26 @@ export function ChatSidebar({ sessions, currentSessionId, onMobileClose }: Props
         )}
         {!isSelectionMode ? (
           <>
-            <Link
-              href="/chat/new"
-              className="flex items-center justify-center gap-2 w-full rounded-2xl bg-nutrition px-4 py-3 text-sm font-black text-black transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(16,185,129,0.35)] active:scale-[0.98] shadow-[0_4px_16px_rgba(16,185,129,0.2)]"
-            >
-              <Plus className="h-4 w-4 stroke-[3px]" />
-              New Chat
-            </Link>
+            {isMobileOverlay ? (
+              // In the mobile overlay, use a button so we can close the sidebar before
+              // navigating — prevents the overlay from staying open over the new chat page.
+              <button
+                type="button"
+                onClick={handleNewChat}
+                className="flex items-center justify-center gap-2 w-full rounded-2xl bg-nutrition px-4 py-3 text-sm font-black text-black transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(16,185,129,0.35)] active:scale-[0.98] shadow-[0_4px_16px_rgba(16,185,129,0.2)]"
+              >
+                <Plus className="h-4 w-4 stroke-[3px]" />
+                New Chat
+              </button>
+            ) : (
+              <Link
+                href="/chat/new"
+                className="flex items-center justify-center gap-2 w-full rounded-2xl bg-nutrition px-4 py-3 text-sm font-black text-black transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_20px_rgba(16,185,129,0.35)] active:scale-[0.98] shadow-[0_4px_16px_rgba(16,185,129,0.2)]"
+              >
+                <Plus className="h-4 w-4 stroke-[3px]" />
+                New Chat
+              </Link>
+            )}
             <div className="flex items-center justify-between px-1">
               <p className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground/40">
                 My Sessions
@@ -195,7 +217,7 @@ export function ChatSidebar({ sessions, currentSessionId, onMobileClose }: Props
       </div>
 
       {/* Session list */}
-      <nav className="flex-1 overflow-y-auto px-2 py-3 scrollbar-hide" aria-label="Chat sessions">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-3 scrollbar-hide" aria-label="Chat sessions">
         {sessions.length === 0 ? (
           <div className="flex flex-col items-center gap-4 px-4 py-16 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.02] border border-white/[0.04]">
@@ -225,7 +247,7 @@ export function ChatSidebar({ sessions, currentSessionId, onMobileClose }: Props
                   >
                     <input
                       autoFocus
-                      className="flex-1 bg-transparent text-xs font-bold text-foreground outline-none"
+                      className="flex-1 bg-white/[0.04] border border-white/20 rounded-lg px-2 py-0.5 text-xs font-bold text-foreground outline-none focus:border-nutrition/50"
                       value={editTitle}
                       onChange={(e) => setEditTitle(e.target.value)}
                       onKeyDown={(e) => {

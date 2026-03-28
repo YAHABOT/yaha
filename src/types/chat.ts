@@ -1,4 +1,4 @@
-import type { ActionCard } from '@/types/action-card'
+import type { AnyActionCard } from '@/types/action-card'
 
 export type MessageRole = 'user' | 'assistant' | 'system'
 
@@ -7,7 +7,7 @@ export type ChatMessage = {
   session_id: string
   role: MessageRole
   content: string
-  actions: ActionCard[] | null
+  actions: AnyActionCard[] | null
   attachments?: unknown[] | null
   created_at: string
 }
@@ -26,7 +26,7 @@ export type CreateMessageInput = {
   session_id: string
   role: MessageRole
   content: string
-  actions?: ActionCard[] | null
+  actions?: AnyActionCard[] | null
   attachments?: unknown[] | null
 }
 

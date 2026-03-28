@@ -2,8 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Paperclip, Send, X, Bot, Zap, CheckCircle2, ChevronRight, Menu } from 'lucide-react'
+import { Paperclip, Send, X, Bot, Zap, CheckCircle2, ChevronRight, Menu, Image, FileText } from 'lucide-react'
 import { ActionCard } from '@/components/chat/ActionCard'
+import { CreateTrackerCard } from '@/components/chat/CreateTrackerCard'
 import { AgentSelector } from '@/components/chat/AgentSelector'
 import { ChatSidebar } from '@/components/chat/ChatSidebar'
 import type { ChatMessage, ChatSession } from '@/types/chat'
@@ -14,12 +15,36 @@ import { getAgentsAction } from '@/app/actions/agents'
 import { renameSessionAction } from '@/app/actions/chat'
 
 const MAX_TEXTAREA_ROWS = 6
-const ACCEPTED_FILE_TYPES = 'image/*,audio/*,application/pdf'
+const ACCEPTED_IMAGE_TYPES = 'image/*'
+// Gemini inlineData only supports text/plain, text/csv, and application/pdf — Office formats excluded
+const ACCEPTED_FILE_TYPES = '.txt,.pdf,.csv,application/pdf,text/plain,text/csv'
 const ALLOWED_MIME_PREFIXES = ['image/', 'audio/']
-const ALLOWED_MIME_EXACT = new Set(['application/pdf'])
+const ALLOWED_MIME_EXACT = new Set([
+  'application/pdf',
+  'text/plain',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'text/csv',
+])
 
 function isAllowedMimeType(mimeType: string): boolean {
   return ALLOWED_MIME_PREFIXES.some((p) => mimeType.startsWith(p)) || ALLOWED_MIME_EXACT.has(mimeType)
+}
+
+const MAX_IMAGE_PX = 1280
+const IMAGE_QUALITY = 0.8
+
+async function compressImage(file: File): Promise<string> {
+  const img = await createImageBitmap(file)
+  const scale = Math.min(1, MAX_IMAGE_PX / Math.max(img.width, img.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(img.width * scale)
+  canvas.height = Math.round(img.height * scale)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas 2D context unavailable')
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', IMAGE_QUALITY).split(',')[1]
 }
 
 type AttachedFile = {
@@ -33,7 +58,6 @@ type Props = {
   session: ChatSession | null
   initialRoutine?: Routine | null
   sessions?: ChatSession[]
-  currentSessionId?: string
 }
 
 export function ChatInterface({ initialMessages, sessionId, session: initialSession, initialRoutine, sessions = [] }: Props): React.ReactElement {
@@ -56,15 +80,36 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   const [isSaving, setIsSaving] = useState<boolean>(false)
 
   const [isHydrated, setIsHydrated] = useState<boolean>(false)
+  const [isAttachMenuOpen, setIsAttachMenuOpen] = useState<boolean>(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileDocInputRef = useRef<HTMLInputElement>(null)
+  // FIX-4: abort in-flight chat request on unmount to prevent ghost/duplicate responses
+  const abortControllerRef = useRef<AbortController | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const triggerSent = useRef(false)
 
   // Mark hydrated after first client paint so the messages area doesn't flash unstyled
   useEffect(() => { setIsHydrated(true) }, [])
+
+  // FIX-4: track mount state to prevent state updates after unmount (e.g. app switch)
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => { isMountedRef.current = false }
+  }, [])
+
+  // Close attachment menu when clicking outside
+  useEffect(() => {
+    if (!isAttachMenuOpen) return
+    function handleOutsideClick(): void {
+      setIsAttachMenuOpen(false)
+    }
+    document.addEventListener('click', handleOutsideClick)
+    return () => document.removeEventListener('click', handleOutsideClick)
+  }, [isAttachMenuOpen])
 
   // Fetch Agents
   useEffect(() => {
@@ -105,6 +150,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       })
       if (res.ok) {
         const data = await res.json()
+        if (!isMountedRef.current) return
         setMessages(prev => [...prev, {
           id: `sw-${Date.now()}`,
           session_id: currentSessionId,
@@ -128,10 +174,12 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId: currentSessionId, agentId: activeAgentId })
+        body: JSON.stringify({ message: text, sessionId: currentSessionId, agentId: activeAgentId }),
+        signal: abortControllerRef.current?.signal
       })
       if (!res.ok) return
       const data = await res.json()
+      if (!isMountedRef.current) return
       setMessages((prev) => [...prev, {
         id: data.message?.id ?? `mod-${Date.now()}`,
         session_id: data.sessionId,
@@ -145,10 +193,14 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       const sessRes = await fetch(`/api/chat/sessions/${data.sessionId}`)
       if (sessRes.ok) {
         const nextSession = await sessRes.json()
+        if (!isMountedRef.current) return
         setSession(nextSession)
         if (nextSession.active_routine_id) {
           const routRes = await fetch(`/api/routines/${nextSession.active_routine_id}`)
-          if (routRes.ok) setCurrentRoutine(await routRes.json())
+          if (routRes.ok) {
+            if (!isMountedRef.current) return
+            setCurrentRoutine(await routRes.json())
+          }
         } else {
           setCurrentRoutine(null)
         }
@@ -156,7 +208,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     } catch {
       // Silent — don't surface errors from auto-advance
     } finally {
-      setIsLoading(false)
+      if (isMountedRef.current) setIsLoading(false)
     }
   }
 
@@ -165,8 +217,9 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     setIsLoading(true)
 
     // User message is optimistic
+    const optimisticId = `opt-${Date.now()}`
     const optimistic: ChatMessage = {
-      id: `opt-${Date.now()}`,
+      id: optimisticId,
       session_id: currentSessionId,
       role: 'user',
       content: text,
@@ -175,14 +228,19 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     }
     setMessages((prev) => [...prev, optimistic])
 
+    // FIX-4: cancel any previous in-flight request; create fresh controller
+    abortControllerRef.current?.abort()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId: currentSessionId, routineId, agentId: activeAgentId })
+        body: JSON.stringify({ message: text, sessionId: currentSessionId, routineId, agentId: activeAgentId }),
+        signal: controller.signal,
       })
       if (!res.ok) {
-// ... rest of error handling ...
         let errorMessage = 'Failed to initiate ritual'
         try {
           const errorData = await res.json()
@@ -194,26 +252,36 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       }
       const data = await res.json()
 
-      setMessages((prev) => [...prev, {
-        // Use the real DB-assigned UUID so ActionCard can pass it to confirmLogAction
-        // and persist confirmed:true onto the correct chat_messages row.
-        id: data.message?.id ?? `mod-${Date.now()}`,
-        session_id: data.sessionId,
-        role: 'assistant',
-        content: data.message.content,
-        actions: data.message.actions,
-        created_at: new Date().toISOString()
-      }])
+      if (!isMountedRef.current) return
+      const newMsgId = data.message?.id ?? `mod-${Date.now()}`
+      setMessages((prev) => {
+        // FIX-4: deduplicate — skip if message with this id already exists
+        if (prev.some(m => m.id === newMsgId)) return prev
+        return [...prev, {
+          // Use the real DB-assigned UUID so ActionCard can pass it to confirmLogAction
+          // and persist confirmed:true onto the correct chat_messages row.
+          id: newMsgId,
+          session_id: data.sessionId,
+          role: 'assistant',
+          content: data.message.content,
+          actions: data.message.actions,
+          created_at: new Date().toISOString()
+        }]
+      })
 
-      // BUG 6 fix: use internal state + History API to avoid Next.js page remount
+      // Track the real session UUID in state for subsequent API calls.
+      // Do NOT update the URL — Next.js 15 intercepts window.history.replaceState
+      // and triggers a full page remount when the path segment changes.
+      // The URL stays as /chat/new for the lifetime of this unsaved chat.
       if (data.sessionId !== currentSessionId) {
         setCurrentSessionId(data.sessionId)
-        window.history.replaceState(null, '', `/chat/${data.sessionId}${routineId ? `?routine=${routineId}` : ''}`)
       }
     } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') return // navigated away
+      if (!isMountedRef.current) return
       setError(e instanceof Error ? e.message : String(e))
     } finally {
-      setIsLoading(false)
+      if (isMountedRef.current) setIsLoading(false)
     }
   }
 
@@ -234,22 +302,32 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     if (disallowed) {
       setError(`File type not supported: ${disallowed.type}`)
       if (fileInputRef.current) fileInputRef.current.value = ''
+      if (fileDocInputRef.current) fileDocInputRef.current.value = ''
       return
     }
 
     const converted = await Promise.all(
       files.map(async (file): Promise<AttachedFile> => {
-        const base64 = await new Promise<string>((resolve) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve((reader.result as string).split(',')[1])
-          reader.readAsDataURL(file)
-        })
+        const isImage = file.type.startsWith('image/')
+        let base64: string
+        let mimeType: string
+        if (isImage) {
+          base64 = await compressImage(file)
+          mimeType = 'image/jpeg'
+        } else {
+          base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve((reader.result as string).split(',')[1])
+            reader.readAsDataURL(file)
+          })
+          mimeType = file.type
+        }
         return {
           file,
           attachment: {
-            type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('audio/') ? 'audio' : 'file',
+            type: isImage ? 'image' : file.type.startsWith('audio/') ? 'audio' : 'file',
             base64,
-            mimeType: file.type,
+            mimeType,
             filename: file.name
           }
         }
@@ -258,6 +336,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
 
     setAttachedFiles((prev) => [...prev, ...converted])
     if (fileInputRef.current) fileInputRef.current.value = ''
+    if (fileDocInputRef.current) fileDocInputRef.current.value = ''
   }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -266,13 +345,16 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     if (!trimmed && attachedFiles.length === 0) return
     if (isLoading) return
 
+    // Snapshot attachments before clearing state
+    const snapshotAttachments = attachedFiles.map(af => af.attachment)
+
     const optimistic: ChatMessage = {
       id: `opt-${Date.now()}`,
       session_id: currentSessionId,
       role: 'user',
       content: trimmed || (attachedFiles.length > 0 ? '' : '[Empty]'),
       actions: null,
-      attachments: attachedFiles.map(af => af.attachment),
+      attachments: snapshotAttachments,
       created_at: new Date().toISOString()
     }
 
@@ -280,6 +362,11 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     setInput('')
     setAttachedFiles([])
     setIsLoading(true)
+
+    // FIX-4: cancel any previous in-flight request; create fresh controller
+    abortControllerRef.current?.abort()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
 
     try {
       const res = await fetch('/api/chat', {
@@ -289,8 +376,9 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
           message: trimmed,
           sessionId: currentSessionId,
           agentId: activeAgentId,
-          attachments: attachedFiles.map(af => af.attachment)
-        })
+          attachments: snapshotAttachments,
+        }),
+        signal: controller.signal,
       })
 
       if (!res.ok) {
@@ -305,15 +393,21 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       }
 
       const data = await res.json()
-      setMessages((prev) => [...prev, {
-        id: `mod-${Date.now()}`,
-        session_id: data.sessionId,
-        role: 'assistant',
-        content: data.message.content,
-        actions: data.message.actions,
-        attachments: data.message.attachments || null,
-        created_at: new Date().toISOString()
-      }])
+      if (!isMountedRef.current) return
+      const assistantMsgId = data.message?.id ?? `mod-${Date.now()}`
+      setMessages((prev) => {
+        // FIX-4: deduplicate — skip if this message id already exists in state
+        if (prev.some(m => m.id === assistantMsgId)) return prev
+        return [...prev, {
+          id: assistantMsgId,
+          session_id: data.sessionId,
+          role: 'assistant',
+          content: data.message.content,
+          actions: data.message.actions,
+          attachments: data.message.attachments || null,
+          created_at: new Date().toISOString()
+        }]
+      })
 
       setAttachedFiles([]) // Clear attachments after success
 
@@ -321,30 +415,33 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       const sessRes = await fetch(`/api/chat/sessions/${data.sessionId}`)
       if (sessRes.ok) {
         const nextSession = await sessRes.json()
+        if (!isMountedRef.current) return
         setSession(nextSession)
 
         if (nextSession.active_routine_id) {
           const routRes = await fetch(`/api/routines/${nextSession.active_routine_id}`)
-          if (routRes.ok) setCurrentRoutine(await routRes.json())
+          if (routRes.ok) {
+            if (!isMountedRef.current) return
+            setCurrentRoutine(await routRes.json())
+          }
         } else {
           setCurrentRoutine(null)
         }
       }
 
-      // BUG 6 fix: use internal state + History API to avoid Next.js page remount
+      // Track the real session UUID in state for subsequent API calls.
+      // Do NOT update the URL — Next.js 15 intercepts window.history.replaceState
+      // and triggers a full page remount when the path segment changes.
+      // The URL stays as /chat/new for the lifetime of this unsaved chat.
       if (data.sessionId !== currentSessionId) {
         setCurrentSessionId(data.sessionId)
-        const routineParam = searchParams.get('routine')
-        window.history.replaceState(
-          null,
-          '',
-          `/chat/${data.sessionId}${routineParam ? `?routine=${routineParam}` : ''}`
-        )
       }
     } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') return // navigated away
+      if (!isMountedRef.current) return
       setError(e instanceof Error ? e.message : String(e))
     } finally {
-      setIsLoading(false)
+      if (isMountedRef.current) setIsLoading(false)
     }
   }
 
@@ -368,17 +465,19 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   const activeAgent = agents.find(a => a.id === activeAgentId)
 
   return (
-    <div className="relative flex h-full flex-col bg-background text-foreground">
+    <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden bg-background text-foreground">
       {/* BUG 3: Mobile sidebar overlay */}
       {isMobileSidebarOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          {/* Backdrop */}
+        // Outer div handles close-on-backdrop-click. pointer-events-none on the visual
+        // backdrop prevents iOS Safari from creating a stacking context that traps touches.
+        <div className="fixed inset-0 z-50 md:hidden" onClick={() => setIsMobileSidebarOpen(false)}>
+          {/* Visual backdrop — pointer-events-none so it never intercepts touch events */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-none" />
+          {/* Sidebar panel — stopPropagation prevents close when clicking inside */}
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setIsMobileSidebarOpen(false)}
-          />
-          {/* Sidebar panel */}
-          <div className="absolute left-0 top-0 h-full w-72 animate-in slide-in-from-left-4 duration-300">
+            className="absolute left-0 top-0 z-10 h-full w-72 animate-in slide-in-from-left-4 duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
             <ChatSidebar
               sessions={sessions}
               currentSessionId={currentSessionId}
@@ -431,8 +530,8 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         </div>
       )}
 
-      {/* Dynamic Header */}
-      <div className="bg-card/60 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-4 py-3 md:px-6">
+      {/* Dynamic Header — shrink-0 keeps it pinned at top while messages scroll */}
+      <div className="shrink-0 bg-card/60 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-4 py-3 md:px-6">
         <div className="flex items-center gap-3">
           {/* BUG 3: Hamburger button — mobile only */}
           <button
@@ -508,8 +607,9 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         </div>
       </div>
 
-      {/* Messages — invisible until hydrated to prevent first-paint flash */}
-      <div className={`flex-1 overflow-y-auto px-4 py-10 space-y-6 lg:px-12 ${!isHydrated ? 'invisible' : ''}`}>
+      {/* Messages — min-h-0 is critical: without it a flex child won't shrink below content height,
+           causing the whole page to scroll instead of just this element */}
+      <div className={`min-h-0 flex-1 overflow-y-auto px-4 py-10 space-y-6 lg:px-12 ${!isHydrated ? 'invisible' : ''}`}>
         {error && (
           <div className="mb-6 flex items-center justify-between rounded-2xl bg-red-500/[0.08] border border-red-500/20 px-4 py-3 text-sm text-red-300 animate-in slide-in-from-top-2 backdrop-blur-sm">
             <div className="flex items-center gap-3">
@@ -586,21 +686,53 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
 
               {message.actions && message.actions.length > 0 && (
                 <div className="mt-1 w-full space-y-3">
-                  {message.actions.map((card, idx) => (
-                    <ActionCard
-                      key={idx}
-                      card={card}
-                      messageId={message.id}
-                      cardIndex={idx}
-                      onConfirmed={
-                        // When a routine is active, silently send a continue signal so the
-                        // AI immediately prompts for the next step without user typing "next".
-                        session?.active_routine_id
-                          ? () => handleSendSilent('continue')
-                          : undefined
-                      }
-                    />
-                  ))}
+                  {message.actions.map((card, idx) => {
+                    if (card.type === 'CREATE_TRACKER') {
+                      return (
+                        <CreateTrackerCard
+                          key={idx}
+                          card={card}
+                          messageId={message.id}
+                          cardIndex={idx}
+                          onConfirm={() => {
+                            setMessages(prev => prev.map(msg => {
+                              if (msg.id !== message.id || !msg.actions) return msg
+                              const updatedActions = msg.actions.map((a, i) =>
+                                i === idx ? { ...a, confirmed: true } : a
+                              )
+                              return { ...msg, actions: updatedActions }
+                            }))
+                          }}
+                        />
+                      )
+                    }
+                    return (
+                      <ActionCard
+                        key={idx}
+                        card={card}
+                        messageId={message.id}
+                        cardIndex={idx}
+                        onConfirm={() => {
+                          // FIX-5: persist confirmed=true into in-memory messages state so
+                          // subsequent renders in the same session don't revert to pending
+                          setMessages(prev => prev.map(msg => {
+                            if (msg.id !== message.id || !msg.actions) return msg
+                            const updatedActions = msg.actions.map((a, i) =>
+                              i === idx ? { ...a, confirmed: true } : a
+                            )
+                            return { ...msg, actions: updatedActions }
+                          }))
+                        }}
+                        onConfirmed={
+                          // When a routine is active, silently send a continue signal so the
+                          // AI immediately prompts for the next step without user typing "next".
+                          session?.active_routine_id
+                            ? () => handleSendSilent('continue')
+                            : undefined
+                        }
+                      />
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -638,10 +770,20 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       )}
 
       {/* Input — shrink-0 keeps it always visible above mobile bottom nav; no sticky needed inside flex column */}
-      <div className="shrink-0 bg-card/60 backdrop-blur-xl border-t border-white/5 p-4 md:p-5 lg:px-12">
+      <div className="shrink-0 bg-card/60 backdrop-blur-xl border-t border-white/5 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] md:p-5 lg:px-12">
         <form onSubmit={handleSubmit} className="relative mx-auto max-w-4xl">
+          {/* Image file input */}
           <input
             ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_IMAGE_TYPES}
+            multiple
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          {/* Document/file input */}
+          <input
+            ref={fileDocInputRef}
             type="file"
             accept={ACCEPTED_FILE_TYPES}
             multiple
@@ -650,11 +792,38 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
           />
 
           <div className="relative flex items-end gap-2 rounded-[28px] bg-white/[0.03] border border-white/[0.08] p-2 pl-3 transition-all duration-300 focus-within:border-nutrition/30 focus-within:bg-white/[0.05] focus-within:shadow-[0_0_24px_rgba(16,185,129,0.08)]">
-            <div className="mb-1 flex items-center gap-0.5">
+            <div className="mb-1 flex items-center gap-0.5 relative">
+              {/* Attach menu popover */}
+              {isAttachMenuOpen && (
+                <div className="absolute bottom-11 left-0 z-20 flex flex-col gap-1 rounded-2xl border border-white/10 bg-[#0A0A0A] p-2 shadow-2xl animate-in slide-in-from-bottom-2 duration-150">
+                  <button
+                    type="button"
+                    onClick={() => { setIsAttachMenuOpen(false); fileInputRef.current?.click() }}
+                    className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-bold text-textPrimary/80 transition-all hover:bg-white/[0.06] hover:text-textPrimary whitespace-nowrap"
+                  >
+                    <Image className="h-4 w-4 text-sleep shrink-0" />
+                    Attach Image
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAttachMenuOpen(false)
+                      // Delay click by one tick — closing the menu triggers a re-render that
+                      // can swallow the click event on mobile before the input fires.
+                      setTimeout(() => fileDocInputRef.current?.click(), 0)
+                    }}
+                    className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-bold text-textPrimary/80 transition-all hover:bg-white/[0.06] hover:text-textPrimary whitespace-nowrap"
+                  >
+                    <FileText className="h-4 w-4 text-workout shrink-0" />
+                    Attach File
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setIsAttachMenuOpen(v => !v)}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground/50 transition-all duration-200 hover:bg-white/[0.06] hover:text-muted-foreground"
+                aria-label="Attach file or image"
               >
                 <Paperclip className="h-4 w-4" />
               </button>

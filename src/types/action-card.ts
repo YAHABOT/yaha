@@ -1,7 +1,14 @@
-export type ActionCardType = 'LOG_DATA'
+export type ActionCardType = 'LOG_DATA' | 'CREATE_TRACKER'
+
+export type SchemaFieldDef = {
+  fieldId: string
+  label: string
+  type: 'number' | 'text' | 'rating' | 'time'
+  unit?: string
+}
 
 export type ActionCard = {
-  type: ActionCardType
+  type: 'LOG_DATA'
   trackerId: string
   trackerName: string
   fields: Record<string, number | string | null>
@@ -12,6 +19,17 @@ export type ActionCard = {
   source: 'chat' | 'telegram' | 'manual'
   confirmed?: boolean // persisted to DB after user confirms — survives page refresh
 }
+
+export type CreateTrackerCard = {
+  type: 'CREATE_TRACKER'
+  name: string
+  trackerType: 'nutrition' | 'sleep' | 'workout' | 'mood' | 'water' | 'custom'
+  color: string
+  schema: SchemaFieldDef[]
+  confirmed?: boolean
+}
+
+export type AnyActionCard = ActionCard | CreateTrackerCard
 
 export type ChatAttachment = {
   type: 'image' | 'audio' | 'file'
@@ -30,5 +48,5 @@ export type ChatInput = {
 
 export type GeminiResponse = {
   text: string
-  actions: ActionCard[]
+  actions: AnyActionCard[]
 }

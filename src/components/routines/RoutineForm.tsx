@@ -187,14 +187,14 @@ export function RoutineForm({ trackers, initialValues }: Props) {
           <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-textMuted opacity-30">
             Operation Steps ({stepDrafts.length})
           </h3>
+          {/* FIX-9: Deploy Protocol moved here as secondary outlined button */}
           <button
-            type="button"
-            onClick={() => setShowTrackerPicker((v) => !v)}
-            disabled={trackers.length === 0}
-            className="flex items-center gap-2 rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-textPrimary transition-all hover:bg-white/10 active:scale-95 disabled:opacity-20"
+            type="submit"
+            disabled={submitting}
+            className="flex items-center gap-2 rounded-xl border border-nutrition/30 bg-nutrition/[0.06] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-nutrition/80 transition-all hover:bg-nutrition/20 hover:text-nutrition active:scale-95 disabled:opacity-30"
           >
-            <Plus className="h-3.5 w-3.5 stroke-[3px]" />
-            Add Tracker
+            <Save className="h-3.5 w-3.5 stroke-[3px]" />
+            {submitting ? 'Syncing...' : isEdit ? 'Update Protocol' : 'Deploy Protocol'}
           </button>
         </div>
 
@@ -261,7 +261,7 @@ export function RoutineForm({ trackers, initialValues }: Props) {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="flex flex-wrap gap-3">
                     {tracker.schema.map((field) => {
                       const checked = draft.selectedFieldIds.has(field.fieldId)
                       return (
@@ -269,14 +269,14 @@ export function RoutineForm({ trackers, initialValues }: Props) {
                           key={field.fieldId}
                           type="button"
                           onClick={() => handleFieldToggle(stepIndex, field.fieldId)}
-                          className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 transition-all active:scale-95 ${
-                            checked 
-                              ? 'border-nutrition/30 bg-nutrition/10 text-nutrition' 
+                          className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition-all active:scale-95 ${
+                            checked
+                              ? 'border-nutrition/30 bg-nutrition/10 text-nutrition'
                               : 'border-white/5 bg-black/40 text-textMuted hover:border-white/10 hover:text-textPrimary'
                           }`}
                         >
-                          <span className="text-[10px] font-black uppercase tracking-widest truncate">{field.label}</span>
-                          <div className={`h-4 w-4 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${checked ? 'border-nutrition bg-nutrition' : 'border-white/10 bg-transparent'}`}>
+                          <span className="text-[10px] font-black uppercase tracking-widest">{field.label}</span>
+                          <div className={`h-4 w-4 shrink-0 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${checked ? 'border-nutrition bg-nutrition' : 'border-white/10 bg-transparent'}`}>
                             {checked && <Check size={10} className="text-[#050505] stroke-[4px]" />}
                           </div>
                         </button>
@@ -290,8 +290,8 @@ export function RoutineForm({ trackers, initialValues }: Props) {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-end gap-6 pt-10 border-t border-white/5">
+      {/* Footer — FIX-9: Add Tracker is now the primary CTA at the bottom */}
+      <div className="flex items-center justify-between gap-6 pt-10 border-t border-white/5">
         <button
           type="button"
           onClick={() => router.push('/routines')}
@@ -300,12 +300,13 @@ export function RoutineForm({ trackers, initialValues }: Props) {
           Cancel
         </button>
         <button
-          type="submit"
-          disabled={submitting}
-          className="flex items-center gap-3 rounded-2xl bg-nutrition px-12 py-4 text-sm font-black uppercase tracking-widest text-[#050505] transition-all duration-300 hover:scale-[1.05] active:scale-95 shadow-xl shadow-nutrition/30 disabled:opacity-50"
+          type="button"
+          onClick={() => setShowTrackerPicker((v) => !v)}
+          disabled={trackers.length === 0}
+          className="flex flex-1 items-center justify-center gap-3 rounded-2xl bg-nutrition px-12 py-4 text-sm font-black uppercase tracking-widest text-[#050505] transition-all duration-300 hover:scale-[1.02] active:scale-95 shadow-xl shadow-nutrition/30 disabled:opacity-50 transition-all"
         >
-          <Save className="h-5 w-5 stroke-[3px]" />
-          {submitting ? 'Syncing...' : isEdit ? 'Update Protocol' : 'Deploy Protocol'}
+          <Plus className="h-5 w-5 stroke-[3px]" />
+          Add Tracker
         </button>
       </div>
     </form>

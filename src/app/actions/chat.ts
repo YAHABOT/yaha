@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createServerClient } from '@/lib/supabase/server'
-import type { ActionCard } from '@/types/action-card'
+import type { ActionCard, CreateTrackerCard } from '@/types/action-card'
 
 export async function confirmLogAction(
   card: ActionCard,
@@ -110,6 +110,86 @@ export async function confirmLogAction(
     return { success: true }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Failed to confirm log' }
+  }
+}
+
+export async function confirmCreateTrackerAction(
+  card: CreateTrackerCard,
+  messageId?: string,
+  cardIndex?: number
+): Promise<{ success?: boolean; trackerId?: string; error?: string }> {
+  try {
+    if (!card.name?.trim()) return { error: 'Tracker name is required' }
+    if (!Array.isArray(card.schema)) return { error: 'Tracker schema is required' }
+
+    const supabase = await createServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    // Duplicate guard — only blocks re-confirming the SAME card
+    if (messageId && cardIndex !== undefined) {
+      const { data: msgCheck } = await supabase
+        .from('chat_messages')
+        .select('actions')
+        .eq('id', messageId)
+        .single()
+      if (msgCheck) {
+        const actions = msgCheck.actions as Array<{ confirmed?: boolean }> ?? []
+        if (actions[cardIndex]?.confirmed === true) {
+          return { success: true }
+        }
+      }
+    }
+
+    const { data: newTracker, error } = await supabase
+      .from('trackers')
+      .insert({
+        user_id: user.id,
+        name: card.name.trim(),
+        type: card.trackerType,
+        color: card.color,
+        schema: card.schema,
+      })
+      .select('id')
+      .single()
+
+    if (error) return { error: `Failed to create tracker: ${error.message}` }
+
+    // Persist confirmed: true onto the action card in the message JSONB
+    if (messageId) {
+      const { data: msg } = await supabase
+        .from('chat_messages')
+        .select('actions, session_id')
+        .eq('id', messageId)
+        .single()
+
+      if (msg) {
+        const { error: sessErr } = await supabase
+          .from('chat_sessions')
+          .select('id')
+          .eq('id', msg.session_id as string)
+          .eq('user_id', user.id)
+          .single()
+
+        if (!sessErr) {
+          const rawActions = msg.actions as Array<Record<string, unknown>> ?? []
+          const updatedActions = rawActions.map((a, i: number) => {
+            const matches = cardIndex !== undefined ? i === cardIndex : a.type === 'CREATE_TRACKER' && a.name === card.name
+            return matches ? { ...a, confirmed: true } : a
+          })
+          await supabase
+            .from('chat_messages')
+            .update({ actions: updatedActions })
+            .eq('id', messageId)
+        }
+      }
+    }
+
+    revalidatePath('/trackers')
+    revalidatePath('/chat')
+    return { success: true, trackerId: newTracker.id }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to create tracker' }
   }
 }
 

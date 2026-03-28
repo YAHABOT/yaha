@@ -235,18 +235,18 @@ export function RoutineForm({ trackers, initialValues }: Props) {
               return (
                 <div
                   key={`${draft.trackerId}-${stepIndex}`}
-                  className="rounded-[32px] border border-white/5 bg-white/[0.02] p-8 space-y-6 relative group animate-in slide-in-from-bottom-2"
+                  className="rounded-[32px] border border-white/5 bg-white/[0.02] p-5 md:p-8 space-y-6 relative group animate-in slide-in-from-bottom-2"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div 
-                        className="h-10 w-10 rounded-xl flex items-center justify-center"
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                      <div
+                        className="h-10 w-10 shrink-0 rounded-xl flex items-center justify-center"
                         style={{ backgroundColor: `${tracker.color}15`, border: `1px solid ${tracker.color}30` }}
                       >
                          <Target size={18} style={{ color: tracker.color }} />
                       </div>
-                      <div>
-                        <h4 className="text-sm font-black uppercase tracking-widest text-textPrimary">{tracker.name}</h4>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-black uppercase tracking-widest text-textPrimary truncate">{tracker.name}</h4>
                         <p className="text-[10px] font-bold text-textMuted opacity-40">
                           {selectedCount} Metrics Selected
                         </p>
@@ -275,7 +275,7 @@ export function RoutineForm({ trackers, initialValues }: Props) {
                               : 'border-white/5 bg-black/40 text-textMuted hover:border-white/10 hover:text-textPrimary'
                           }`}
                         >
-                          <span className="text-[10px] font-black uppercase tracking-widest">{field.label}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest shrink-0">{field.label}</span>
                           <div className={`h-4 w-4 shrink-0 rounded-full border-2 transition-all duration-200 flex items-center justify-center ${checked ? 'border-nutrition bg-nutrition' : 'border-white/10 bg-transparent'}`}>
                             {checked && <Check size={10} className="text-[#050505] stroke-[4px]" />}
                           </div>

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Paperclip, Send, X, Bot, Zap, CheckCircle2, ChevronRight, Menu, Image, FileText } from 'lucide-react'
+import { Paperclip, Send, X, Bot, Zap, CheckCircle2, ChevronRight, Menu, Image, FileText, Camera } from 'lucide-react'
 import { ActionCard } from '@/components/chat/ActionCard'
 import { CreateTrackerCard } from '@/components/chat/CreateTrackerCard'
 import { AgentSelector } from '@/components/chat/AgentSelector'
@@ -85,6 +85,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const fileDocInputRef = useRef<HTMLInputElement>(null)
+  const fileCameraInputRef = useRef<HTMLInputElement>(null)
   // FIX-4: abort in-flight chat request on unmount to prevent ghost/duplicate responses
   const abortControllerRef = useRef<AbortController | null>(null)
   const router = useRouter()
@@ -303,6 +304,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       setError(`File type not supported: ${disallowed.type}`)
       if (fileInputRef.current) fileInputRef.current.value = ''
       if (fileDocInputRef.current) fileDocInputRef.current.value = ''
+      if (fileCameraInputRef.current) fileCameraInputRef.current.value = ''
       return
     }
 
@@ -337,6 +339,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     setAttachedFiles((prev) => [...prev, ...converted])
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (fileDocInputRef.current) fileDocInputRef.current.value = ''
+    if (fileCameraInputRef.current) fileCameraInputRef.current.value = ''
   }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -465,7 +468,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   const activeAgent = agents.find(a => a.id === activeAgentId)
 
   return (
-    <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden bg-background text-foreground">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
       {/* BUG 3: Mobile sidebar overlay */}
       {isMobileSidebarOpen && (
         // Outer div handles close-on-backdrop-click. pointer-events-none on the visual
@@ -781,6 +784,15 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
             onChange={handleFileChange}
             className="hidden"
           />
+          {/* Camera capture input */}
+          <input
+            ref={fileCameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileChange}
+            className="hidden"
+          />
           {/* Document/file input */}
           <input
             ref={fileDocInputRef}
@@ -798,11 +810,19 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
                 <div className="absolute bottom-11 left-0 z-20 flex flex-col gap-1 rounded-2xl border border-white/10 bg-[#0A0A0A] p-2 shadow-2xl animate-in slide-in-from-bottom-2 duration-150">
                   <button
                     type="button"
+                    onClick={() => { setIsAttachMenuOpen(false); fileCameraInputRef.current?.click() }}
+                    className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-bold text-textPrimary/80 transition-all hover:bg-white/[0.06] hover:text-textPrimary whitespace-nowrap"
+                  >
+                    <Camera className="h-4 w-4 text-mood shrink-0" />
+                    Take Photo
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => { setIsAttachMenuOpen(false); fileInputRef.current?.click() }}
                     className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-bold text-textPrimary/80 transition-all hover:bg-white/[0.06] hover:text-textPrimary whitespace-nowrap"
                   >
                     <Image className="h-4 w-4 text-sleep shrink-0" />
-                    Attach Image
+                    Photo Library
                   </button>
                   <button
                     type="button"

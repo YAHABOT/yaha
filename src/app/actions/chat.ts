@@ -62,7 +62,6 @@ export async function confirmLogAction(
 
     // Persist confirmed: true onto the matching action card in the message's JSONB so the
     // card initialises as confirmed after a page refresh instead of reverting to pending.
-    console.log('[confirmLogAction] called — messageId:', messageId, 'cardIndex:', cardIndex)
     if (messageId) {
       const { data: msg } = await supabase
         .from('chat_messages')
@@ -79,7 +78,11 @@ export async function confirmLogAction(
           .eq('user_id', user.id)
           .single()
 
-        if (!sessErr) {
+        if (sessErr) {
+          // Log entry was already written to tracker_logs above — this is non-blocking.
+          // confirmed:true will not persist but the data is saved. Log for debugging.
+          console.error('[confirmLogAction] Session ownership check failed — confirmed state not persisted:', sessErr.message)
+        } else {
           const rawActions = msg.actions as ActionCard[] ?? []
           // Index-based match is exact — avoids tracker+date collisions and string diff bugs.
           // Fall back to trackerId+date matching for messages that predate cardIndex.
@@ -89,15 +92,12 @@ export async function confirmLogAction(
               : a.trackerId === card.trackerId && a.date === card.date
             return matches ? { ...a, confirmed: true } : a
           })
-          console.log('[confirmLogAction] Persisting confirmed=true to message', messageId, 'at index', cardIndex, 'matching actions:', actions.filter(a => a.confirmed))
           const { error: updateErr } = await supabase
             .from('chat_messages')
             .update({ actions })
             .eq('id', messageId)
           if (updateErr) {
             console.error('[confirmLogAction] Failed to persist confirmed state:', updateErr.message)
-          } else {
-            console.log('[confirmLogAction] ✓ Successfully persisted confirmed state')
           }
         }
       }
@@ -106,6 +106,7 @@ export async function confirmLogAction(
     revalidatePath('/journal')
     revalidatePath('/dashboard')
     revalidatePath('/trackers', 'layout')
+    revalidatePath('/chat')
 
     return { success: true }
   } catch (e) {

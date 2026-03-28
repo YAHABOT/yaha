@@ -17,6 +17,7 @@ import {
   Paperclip,
   Image,
   FileText,
+  Camera,
 } from 'lucide-react'
 import type { ChatSession } from '@/types/chat'
 import type { Agent } from '@/types/agent'
@@ -83,6 +84,7 @@ export function MobileChatHome({ sessions }: MobileChatHomeProps): React.ReactEl
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileImageInputRef = useRef<HTMLInputElement>(null)
   const fileDocInputRef = useRef<HTMLInputElement>(null)
+  const fileCameraInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
   useEffect(() => { setMounted(true) }, [])
@@ -205,6 +207,7 @@ export function MobileChatHome({ sessions }: MobileChatHomeProps): React.ReactEl
     setAttachedFiles((prev) => [...prev, ...converted])
     if (fileImageInputRef.current) fileImageInputRef.current.value = ''
     if (fileDocInputRef.current) fileDocInputRef.current.value = ''
+    if (fileCameraInputRef.current) fileCameraInputRef.current.value = ''
   }, [])
 
   const handleSend = useCallback(async (): Promise<void> => {
@@ -441,6 +444,14 @@ export function MobileChatHome({ sessions }: MobileChatHomeProps): React.ReactEl
           className="hidden"
         />
         <input
+          ref={fileCameraInputRef}
+          type="file"
+          accept={ACCEPTED_IMAGE_TYPES}
+          capture="environment"
+          onChange={(e) => void handleFileChange(e)}
+          className="hidden"
+        />
+        <input
           ref={fileDocInputRef}
           type="file"
           accept={ACCEPTED_FILE_TYPES}
@@ -475,11 +486,19 @@ export function MobileChatHome({ sessions }: MobileChatHomeProps): React.ReactEl
               <div className="absolute bottom-11 left-0 z-20 flex flex-col gap-1 rounded-2xl border border-white/10 bg-[#0A0A0A] p-2 shadow-2xl animate-in slide-in-from-bottom-2 duration-150">
                 <button
                   type="button"
+                  onClick={() => { setIsAttachMenuOpen(false); fileCameraInputRef.current?.click() }}
+                  className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-bold text-textPrimary/80 transition-all hover:bg-white/[0.06] hover:text-textPrimary whitespace-nowrap"
+                >
+                  <Camera className="h-4 w-4 text-mood shrink-0" />
+                  Take Photo
+                </button>
+                <button
+                  type="button"
                   onClick={() => { setIsAttachMenuOpen(false); fileImageInputRef.current?.click() }}
                   className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-bold text-textPrimary/80 transition-all hover:bg-white/[0.06] hover:text-textPrimary whitespace-nowrap"
                 >
                   <Image className="h-4 w-4 text-sleep shrink-0" />
-                  Attach Image
+                  Photo Library
                 </button>
                 <button
                   type="button"

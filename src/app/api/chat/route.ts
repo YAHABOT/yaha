@@ -139,7 +139,11 @@ export async function POST(req: Request): Promise<Response> {
     // FIX-7: run all independent DB fetches in parallel — routine detection,
     // trackers, agents, brain context, chat history, and day logs all fire at once.
     // This eliminates sequential Supabase round-trips that caused >1 min latency.
-    const today = new Date().toISOString().split('T')[0]
+    // Prefer the client-supplied local date (YYYY-MM-DD in user's timezone).
+    // Falls back to UTC server date only if the client didn't send one.
+    const today = (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date))
+      ? date
+      : new Date().toISOString().split('T')[0]
 
     const [
       trackers,

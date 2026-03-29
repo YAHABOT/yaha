@@ -23,6 +23,14 @@ function formatTime(iso: string): string {
   }).format(new Date(iso))
 }
 
+// Converts a UTC ISO string to the YYYY-MM-DDTHH:MM format expected by <input type="datetime-local">.
+// Uses local-time getters so the input shows the user's local clock, not UTC.
+function toDatetimeLocal(isoUTC: string): string {
+  const d = new Date(isoUTC)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 function getSourceBadgeStyle(source: string): string {
   if (source === 'telegram') return 'bg-sleep/10 text-sleep border border-sleep/20'
   if (source === 'web') return 'bg-nutrition/10 text-nutrition border border-nutrition/20'
@@ -36,6 +44,7 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
   const [isEditing, setIsEditing] = useState(false)
   const [editValues, setEditValues] = useState<Record<string, string>>({})
   const [originalValues, setOriginalValues] = useState<Record<string, unknown>>({})
+  const [editLoggedAt, setEditLoggedAt] = useState<string>('')
   const [editError, setEditError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<boolean>(false)
 
@@ -85,6 +94,7 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
     }
     setOriginalValues(original)
     setEditValues(raw)
+    setEditLoggedAt(toDatetimeLocal(log.logged_at))
     setIsEditing(true)
     setEditError(null)
   }
@@ -93,6 +103,7 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
     setIsEditing(false)
     setEditValues({})
     setOriginalValues({})
+    setEditLoggedAt('')
     setEditError(null)
   }
 
@@ -133,21 +144,34 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
         }
       }
 
-      // Only proceed if there are actual changes
-      if (Object.keys(fields).length === 0) {
+      // Detect timestamp change — convert local datetime back to UTC ISO for the DB
+      const newLoggedAt = editLoggedAt
+        ? new Date(editLoggedAt).toISOString()
+        : undefined
+      const loggedAtChanged = newLoggedAt !== undefined && newLoggedAt !== log.logged_at
+
+      // Only proceed if there are actual changes (fields or timestamp)
+      if (Object.keys(fields).length === 0 && !loggedAtChanged) {
         setIsEditing(false)
         setEditValues({})
         setOriginalValues({})
+        setEditLoggedAt('')
         return
       }
 
-      const result = await updateLogAction(log.id, log.tracker_id, fields)
+      const result = await updateLogAction(
+        log.id,
+        log.tracker_id,
+        fields,
+        loggedAtChanged ? newLoggedAt : undefined
+      )
       if (result.error) {
         setEditError(result.error)
       } else {
         setIsEditing(false)
         setEditValues({})
         setOriginalValues({})
+        setEditLoggedAt('')
       }
     })
   }
@@ -243,6 +267,21 @@ export function LogEntryCard({ log, schema }: Props): React.ReactElement {
           <span className="text-[11px] font-black uppercase tracking-widest text-blue-400">
             Editing — confirm or cancel changes
           </span>
+        </div>
+      )}
+
+      {/* Editable timestamp — only visible in edit mode */}
+      {isEditing && (
+        <div className="mb-3">
+          <label className="block text-[10px] font-medium uppercase tracking-wider text-textMuted mb-1">
+            Date &amp; Time
+          </label>
+          <input
+            type="datetime-local"
+            value={editLoggedAt}
+            onChange={(e) => setEditLoggedAt(e.target.value)}
+            className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm text-textPrimary focus:border-white/30 focus:outline-none focus:ring-1 focus:ring-white/20"
+          />
         </div>
       )}
 

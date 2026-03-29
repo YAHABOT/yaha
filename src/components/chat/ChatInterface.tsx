@@ -14,6 +14,13 @@ import type { Routine } from '@/types/routine'
 import { getAgentsAction } from '@/app/actions/agents'
 import { renameSessionAction } from '@/app/actions/chat'
 
+// Returns YYYY-MM-DD in the user's LOCAL timezone — avoids UTC midnight boundary issues
+// where UTC+7 users in the early morning would get yesterday's UTC date as "today".
+function getLocalDateStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const MAX_TEXTAREA_ROWS = 6
 const ACCEPTED_IMAGE_TYPES = 'image/*'
 // Gemini inlineData only supports text/plain, text/csv, and application/pdf — Office formats excluded
@@ -175,7 +182,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId: currentSessionId, agentId: activeAgentId }),
+        body: JSON.stringify({ message: text, sessionId: currentSessionId, agentId: activeAgentId, date: getLocalDateStr() }),
         signal: abortControllerRef.current?.signal
       })
       if (!res.ok) return
@@ -238,7 +245,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId: currentSessionId, routineId, agentId: activeAgentId }),
+        body: JSON.stringify({ message: text, sessionId: currentSessionId, routineId, agentId: activeAgentId, date: getLocalDateStr() }),
         signal: controller.signal,
       })
       if (!res.ok) {
@@ -380,6 +387,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
           sessionId: currentSessionId,
           agentId: activeAgentId,
           attachments: snapshotAttachments,
+          date: getLocalDateStr(),
         }),
         signal: controller.signal,
       })
@@ -861,7 +869,8 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                // Shift+Enter sends — plain Enter inserts a newline (textarea default)
+                if (e.key === 'Enter' && e.shiftKey) {
                   e.preventDefault()
                   e.currentTarget.form?.requestSubmit()
                 }

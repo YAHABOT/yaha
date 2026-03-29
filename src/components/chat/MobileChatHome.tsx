@@ -26,6 +26,12 @@ import { AgentSelector } from '@/components/chat/AgentSelector'
 import { deleteSessionAction, deleteSessionsAction, renameSessionAction } from '@/app/actions/chat'
 import { getAgentsAction } from '@/app/actions/agents'
 
+// Returns YYYY-MM-DD in the user's LOCAL timezone — avoids UTC midnight boundary issues
+function getLocalDateStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const SESSION_TITLE_MAX_LENGTH = 30
 const ACCEPTED_IMAGE_TYPES = 'image/*'
 // Gemini inlineData only supports text/plain, text/csv, and application/pdf — Office formats excluded
@@ -224,6 +230,7 @@ export function MobileChatHome({ sessions }: MobileChatHomeProps): React.ReactEl
           sessionId: 'new',
           agentId: activeAgentId,
           attachments: snapshotAttachments,
+          date: getLocalDateStr(),
         }),
       })
       if (!res.ok) throw new Error('Failed to start chat')
@@ -536,7 +543,8 @@ export function MobileChatHome({ sessions }: MobileChatHomeProps): React.ReactEl
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              // Shift+Enter sends — plain Enter inserts a newline (textarea default)
+              if (e.key === 'Enter' && e.shiftKey) {
                 e.preventDefault()
                 void handleSend()
               }

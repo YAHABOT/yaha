@@ -202,7 +202,7 @@ export function ActionCard({ card, messageId, cardIndex, onConfirm, onDiscard, o
         {fieldEntries.map(([key, value]) => {
           // Promote to col-span-2 at 15 chars — text fields and longer strings get full width
           // to prevent clipping in a 2-column grid on narrow (375px) screens.
-          const isLarge = String(value || '').length > 15 || card.fieldLabels?.[key]?.toLowerCase().includes('name') || card.fieldLabels?.[key]?.toLowerCase().includes('item') || card.fieldLabels?.[key]?.toLowerCase().includes('notes')
+          const isLarge = String(value || '').length > 15 || (card.fieldLabels?.[key]?.length ?? 0) > 16 || card.fieldLabels?.[key]?.toLowerCase().includes('name') || card.fieldLabels?.[key]?.toLowerCase().includes('item') || card.fieldLabels?.[key]?.toLowerCase().includes('notes')
           const label = card.fieldLabels?.[key] || key
           const unit = card.fieldUnits?.[key]
 
@@ -211,12 +211,12 @@ export function ActionCard({ card, messageId, cardIndex, onConfirm, onDiscard, o
               key={key}
               className={`flex flex-col gap-1.5 rounded-2xl bg-white/[0.03] p-3.5 border transition-all duration-200 min-w-0 overflow-visible ${isEditExpanded ? 'border-blue-500/20 bg-blue-500/[0.03]' : 'border-white/[0.05]'} focus-within:border-blue-500/40 focus-within:bg-white/[0.05] ${isLarge ? 'col-span-2' : ''}`}
             >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+              <div className="flex flex-wrap items-start gap-1 min-w-0">
+                <span className="min-w-0 flex-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
                   {label}
                 </span>
                 {unit && (
-                  <span className="rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-white/[0.05] border border-white/10 text-muted-foreground/50 select-none cursor-default">
+                  <span className="shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-white/[0.05] border border-white/10 text-muted-foreground/50 select-none cursor-default">
                     {unit}
                   </span>
                 )}

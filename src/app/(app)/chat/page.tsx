@@ -21,7 +21,7 @@ export default async function ChatPage({ searchParams }: Props): Promise<React.R
   const sessions = await getSessions()
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-h-0 overflow-hidden">
       {/* Mobile: full-page session list — hidden on md+ */}
       <MobileChatHome sessions={sessions} />
 

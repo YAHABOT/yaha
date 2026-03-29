@@ -61,9 +61,9 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
   const sessionData = { session, messages, routine }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-h-0 overflow-hidden">
       <ChatSidebar sessions={sessions} currentSessionId={sessionId} />
-      <div className="flex flex-1 flex-col min-h-0 bg-background">
+      <div className="flex flex-1 flex-col min-h-0 overflow-hidden bg-background">
         <ChatInterface
           initialMessages={sessionData.messages}
           sessionId={sessionId}

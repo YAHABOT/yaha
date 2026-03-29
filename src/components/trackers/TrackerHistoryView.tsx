@@ -64,24 +64,27 @@ type GroupedLogs = {
 }
 
 function formatDateHeading(isoDate: string): string {
-  const date = new Date(isoDate)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
+  // Always compare UTC date strings — isoDate is a full ISO timestamp whose UTC date
+  // (slice 0-10) matches the groupLogsByDate key. Using local-time Date arithmetic
+  // would shift the label for UTC+ users whose early-morning UTC timestamps fall on
+  // the previous local day (or vice versa).
+  const utcDate = isoDate.slice(0, 10)
+  const todayUTC = new Date().toISOString().slice(0, 10)
+  const yesterdayUTC = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
 
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
+  if (utcDate === todayUTC) return 'Today'
+  if (utcDate === yesterdayUTC) return 'Yesterday'
 
-  if (d.getTime() === today.getTime()) return 'Today'
-  if (d.getTime() === yesterday.getTime()) return 'Yesterday'
-
+  // Build a Date at UTC noon to avoid any DST / day-boundary oddities in the formatter
+  const [year, month, day] = utcDate.split('-').map(Number)
+  const currentYear = new Date().getUTCFullYear()
   return new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
-    year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
-  }).format(d)
+    timeZone: 'UTC',
+    ...(year !== currentYear ? { year: 'numeric' } : {}),
+  }).format(new Date(Date.UTC(year, month - 1, day)))
 }
 
 function groupLogsByDate(logs: TrackerLog[], schema: SchemaField[]): GroupedLogs[] {

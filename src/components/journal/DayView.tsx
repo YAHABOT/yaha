@@ -42,16 +42,17 @@ function formatSidebarDate(dateStr: string): { day: string; date: string; label:
   return { day: dayName, date: dateNum, label: monthStr }
 }
 
-function formatHeaderDate(dateStr: string): string {
+function formatHeaderDateParts(dateStr: string): { weekday: string; date: string } {
   const [year, month, day] = dateStr.split('-').map(Number)
   const d = new Date(Date.UTC(year, month - 1, day))
-  return d.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
+  const weekday = d.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })
+  const date = d.toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
+    year: 'numeric',
     timeZone: 'UTC',
   })
+  return { weekday, date }
 }
 
 function addDays(dateStr: string, n: number): string {
@@ -194,7 +195,10 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <h1 className="px-2 text-sm font-semibold text-textPrimary truncate max-w-[160px] md:max-w-none">{formatHeaderDate(date)}</h1>
+            <div className="flex-1 min-w-0 px-2 flex flex-col items-center">
+              <span className="text-[10px] font-black uppercase tracking-widest text-textMuted/60 leading-none">{formatHeaderDateParts(date).weekday}</span>
+              <span className="text-sm font-semibold text-textPrimary leading-tight whitespace-nowrap">{formatHeaderDateParts(date).date}</span>
+            </div>
             <button
               onClick={() => goTo(addDays(date, 1))}
               disabled={isToday}

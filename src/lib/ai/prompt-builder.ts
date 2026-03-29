@@ -12,6 +12,8 @@ type BuildHealthSystemPromptParams = {
   date?: string
   userContext?: string
   dayLogs?: DayLog[]
+  /** true = an open day session exists; all logs default to `date`. false = neutral state, ask user. */
+  daySessionActive?: boolean
 }
 
 function formatTrackerSchema(tracker: Tracker): string {
@@ -66,7 +68,11 @@ const GLOBAL_ANTI_HALLUCINATION_RULES = `
 2. **Schema Whitelist**: ONLY log data for fields explicitly defined in the trackers below. If the user's message does not clearly map to any field in any available tracker, do NOT generate a LOG_DATA action.
 3. **Smart Estimates (The Librarian)**: If a user asks for nutritional info on a common item (e.g. "Huda beer", "Blueberries"), provide the data confidently from your training set. **NEVER say "I don't have internet access" or "I can't look that up".** Simply provide the best estimate and fill out the log card.
 4. **Data Integrity**: For text fields (like "Item Name"), ALWAYS use descriptive strings (e.g., "Huda Beer 300ml"). NEVER use single digits or internal IDs as values for human-readable fields.
-5. **System Time Priority**: Today is {{TODAY}}. Always log data for {{TODAY}} unless the user explicitly says otherwise (e.g. "yesterday", "last Monday", "3 days ago", "on March 25th"). When a relative date is given, compute the exact YYYY-MM-DD from {{TODAY}} and use it in the "date" field of the action card. Examples: "yesterday" → subtract 1 day from {{TODAY}}. "5 days ago" → subtract 5 days. "last Friday" → find the most recent past Friday. NEVER use {{TODAY}} when the user specifies a different day.
+5. **Active Day Session / Date Logic** (NON-NEGOTIABLE):
+   - **ACTIVE SESSION**: The current logging date is {{TODAY}}. This date is locked — log ALL data to {{TODAY}} by default. NEVER change this date unless the user explicitly names a different one (e.g. "log for yesterday", "5 days ago", "March 3rd").
+   - **Relative dates**: When the user specifies a relative or explicit past/future date, compute the exact YYYY-MM-DD from {{TODAY}} and use it in the action card's "date" field. Examples: "yesterday" → {{TODAY}} minus 1 day. "5 days ago" → {{TODAY}} minus 5 days. "last Friday" → most recent past Friday from {{TODAY}}. "March 3rd" → use that date directly.
+   - **Explicit date overrides**: If the user says "log for [any date that is NOT {{TODAY}}]", honour that date exactly — compute it, set it in the card, and mention it in your reply so the user can confirm.
+   - NEVER use {{TODAY}} when the user specifies a different day.
 6. **Atomic Logging (Default) — Honour User Intent to Combine**: By default, each DISTINCT food item, supplement, or entity MUST be its own separate LOG_DATA action. Example: "Burger and Cola" = TWO LOG_DATA actions. HOWEVER: if the user explicitly says "log as one item", "combine them", "log it together", or any similar intent to merge — you MUST produce a SINGLE LOG_DATA action. When combining: the item name should reflect the combined meal; EVERY macro field (calories, protein, carbs, fat, etc.) MUST be the arithmetic sum of all constituent items — do NOT re-estimate, do NOT average, ADD the numbers. Example: Item A (300 kcal, 10g protein) + Item B (516 kcal, 51g protein) = combined (816 kcal, 61g protein). Never produce a combined entry with macros lower than the largest single item.
 7. **Tracker ID Rule**: The \`trackerId\` field in LOG_DATA MUST be the exact UUID \`id:\` value from the Available Trackers list (e.g. 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'). NEVER use tracker names, descriptions, or any placeholder text as \`trackerId\`. If you cannot find the tracker's exact ID in the list, do NOT output a LOG_DATA action. When correcting, editing, or updating data from a previous message in this conversation, you MUST use the SAME trackerId as the original action. NEVER generate a new UUID for a correction. Look up the tracker from the Available Trackers list EVERY time you write an action card — even if you think you remember it.
 8. **Tracker Creation Flow**: If you help the user CREATE a new tracker in this conversation, do NOT output a LOG_DATA action for that tracker in the same response. The tracker needs to be saved first. After creation, tell the user it's ready and they can now log to it.
@@ -137,9 +143,22 @@ export function buildHealthSystemPrompt(params: BuildHealthSystemPromptParams): 
   // Use the client-supplied local date (sent from the browser) so the AI knows the user's
   // real calendar day. Falls back to UTC server date only when no date is provided.
   const today = params.date ?? new Date().toISOString().split('T')[0]
+  const daySessionActive = params.daySessionActive ?? false
   const trackerSection = buildTrackerSection(params.trackers)
   const masterBrain = params.userContext ? `${params.userContext}\n---\n` : ''
   const summary = buildDaySummary(params.dayLogs)
+
+  // Neutral-state date instruction: shown when no Start Day has been triggered yet,
+  // or after End Day is completed. AI must ask which day to log to.
+  const neutralDateRule = daySessionActive ? '' : `
+## ⚠️ NEUTRAL DAY STATE — DATE CONFIRMATION REQUIRED
+No day session is currently active (the user has not run Start Day today, or End Day has been completed).
+When the user provides health data to log and has NOT specified a date:
+1. Do NOT immediately produce a LOG_DATA action card.
+2. Ask: "Just to confirm — should I log this for today (${today}) or a different date?"
+3. Once the user confirms the date, produce the action card with that date.
+If the user HAS explicitly named a date (e.g. "log this for yesterday", "log for March 5th"), skip the confirmation and log directly to that computed date.
+`
 
   return `${masterBrain}You are YAHA, Armaan's executive health manager. Help Armaan log his life with zero friction.
 ${VISION_CAPABILITY}
@@ -154,6 +173,7 @@ You have DIRECT access to Armaan's health tracker database. When you produce a L
 Your job is to produce a correctly-formed action card. The app writes it to the database when confirmed. You ARE the logging interface.
 
 Today's date: ${today}
+${neutralDateRule}
 ${GLOBAL_ANTI_HALLUCINATION_RULES.replace(/{{TODAY}}/g, today)}
 
 ## CURRENT DAY ACTIVITY (${today})

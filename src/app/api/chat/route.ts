@@ -7,7 +7,7 @@ import { processHealthMessage } from '@/lib/ai/gemini'
 import { sanitizeFields } from '@/lib/ai/actions'
 import { buildHealthSystemPrompt, buildRoutineSystemPrompt } from '@/lib/ai/prompt-builder'
 import { detectRoutineTrigger } from '@/lib/routines/detector'
-import { markDayStarted, markDayEnded } from '@/lib/db/day-state'
+import { markDayStarted, markDayEnded, getActiveDayState } from '@/lib/db/day-state'
 import { getMasterBrainContext } from '@/lib/ai/master-brain'
 import type { ChatAttachment, ChatInput, AnyActionCard } from '@/types/action-card'
 import type { ChatSession } from '@/types/chat'
@@ -153,6 +153,7 @@ export async function POST(req: Request): Promise<Response> {
       dayLogs,
       activeRoutineRaw,
       routineMatchResult,
+      activeDayState,
     ] = await Promise.all([
       getTrackersBasic(supabase),
       import('@/lib/db/agents').then(m => m.getAgents()),
@@ -165,7 +166,14 @@ export async function POST(req: Request): Promise<Response> {
       (!session.active_routine_id && !routineId && message)
         ? detectRoutineTrigger(message)
         : Promise.resolve(null),
+      // Fetch the open day session (started but not ended) — determines default logging date
+      getActiveDayState(supabase),
     ])
+
+    // The authoritative logging date for this request:
+    // 1. If a day session is open → use that session's date (even if physical day has changed)
+    // 2. Otherwise → use the client-supplied local date (or UTC fallback)
+    const loggingDate = activeDayState?.date ?? today
 
     let activeRoutine: Routine | null = null
 
@@ -247,20 +255,20 @@ export async function POST(req: Request): Promise<Response> {
     })
 
     // 3. Build System Prompt priority
+    // daySessionActive: true when an open session exists — AI logs to loggingDate by default
+    // daySessionActive: false — neutral state, AI asks user to confirm date
+    const daySessionActive = activeDayState !== null
     let systemPrompt: string
     if (activeRoutine) {
       console.log(`[ChatRoute] Using routine prompt: ${activeRoutine.name} (Step ${session.current_step_index + 1})`)
-      systemPrompt = buildRoutineSystemPrompt(activeRoutine, trackers, session.current_step_index, brainContext, dayLogs, today)
+      systemPrompt = buildRoutineSystemPrompt(activeRoutine, trackers, session.current_step_index, brainContext, dayLogs, loggingDate)
     } else if (activeAgent) {
       console.log(`[ChatRoute] Using agent prompt: ${activeAgent.name}`)
-      // Combine agent personality with full YAHA health capabilities so the agent
-      // can still see photos, produce LOG_DATA action cards, and access tracker schema.
-      // Agent system_prompt provides personality/focus; YAHA section provides logging pipeline.
-      const yahaSection = buildHealthSystemPrompt({ trackers, date, userContext: brainContext, dayLogs })
+      const yahaSection = buildHealthSystemPrompt({ trackers, date: loggingDate, userContext: brainContext, dayLogs, daySessionActive })
       systemPrompt = `${activeAgent.system_prompt}\n\n---\n## YAHA HEALTH LOGGING CAPABILITIES\n${yahaSection}`
     } else {
-      console.log(`[ChatRoute] Using standard health prompt.`)
-      systemPrompt = buildHealthSystemPrompt({ trackers, date, userContext: brainContext, dayLogs })
+      console.log(`[ChatRoute] Using standard health prompt. daySession=${daySessionActive ? loggingDate : 'neutral'}`)
+      systemPrompt = buildHealthSystemPrompt({ trackers, date: loggingDate, userContext: brainContext, dayLogs, daySessionActive })
     }
 
     // Build ChatInput
@@ -330,11 +338,13 @@ export async function POST(req: Request): Promise<Response> {
             active_routine_id: null,
             current_step_index: 0 
           })
-          // Fire-and-forget day state update based on routine type
+          // Fire-and-forget day state update based on routine type.
+          // Pass the client's local date so the session row uses the correct calendar day.
           if (activeRoutine.type === 'day_start') {
-            markDayStarted().catch(e => console.error('[DayState] markDayStarted failed:', e))
+            markDayStarted(today).catch(e => console.error('[DayState] markDayStarted failed:', e))
           } else if (activeRoutine.type === 'day_end') {
-            markDayEnded().catch(e => console.error('[DayState] markDayEnded failed:', e))
+            // Close the active session by its own date, not necessarily today's UTC date
+            markDayEnded(loggingDate).catch(e => console.error('[DayState] markDayEnded failed:', e))
           }
         } else {
           // Move to next

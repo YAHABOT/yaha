@@ -250,7 +250,7 @@ export async function POST(req: Request): Promise<Response> {
     let systemPrompt: string
     if (activeRoutine) {
       console.log(`[ChatRoute] Using routine prompt: ${activeRoutine.name} (Step ${session.current_step_index + 1})`)
-      systemPrompt = buildRoutineSystemPrompt(activeRoutine, trackers, session.current_step_index, brainContext, dayLogs)
+      systemPrompt = buildRoutineSystemPrompt(activeRoutine, trackers, session.current_step_index, brainContext, dayLogs, today)
     } else if (activeAgent) {
       console.log(`[ChatRoute] Using agent prompt: ${activeAgent.name}`)
       // Combine agent personality with full YAHA health capabilities so the agent

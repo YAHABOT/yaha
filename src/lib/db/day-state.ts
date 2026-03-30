@@ -55,8 +55,10 @@ export async function getActiveDayState(supabaseClient?: SupabaseClient): Promis
 }
 
 /**
- * Called when the Start Day routine completes.
+ * Called when the Start Day routine is TRIGGERED (not completed).
  * date: the client's local YYYY-MM-DD (not UTC server date).
+ * Also closes any other open sessions so there is never more than one active session.
+ * This means starting 8/3 automatically closes the lingering 7/3 session.
  */
 export async function markDayStarted(date: string): Promise<void> {
   const supabase = await createServerClient()
@@ -64,6 +66,15 @@ export async function markDayStarted(date: string): Promise<void> {
   if (!user) throw new Error('Unauthorized')
 
   const now = new Date().toISOString()
+
+  // Close any previously open sessions (different date) — prevents stale sessions
+  // accumulating when the user skips End Day and starts a new day
+  await supabase
+    .from('user_day_state')
+    .update({ day_ended_at: now, updated_at: now })
+    .eq('user_id', user.id)
+    .is('day_ended_at', null)
+    .neq('date', date)
 
   const { error } = await supabase
     .from('user_day_state')

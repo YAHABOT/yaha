@@ -9,7 +9,10 @@ type DayLog = {
 
 type BuildHealthSystemPromptParams = {
   trackers: Tracker[]
+  /** The active logging date — either the open day session's date, or the client's local today */
   date?: string
+  /** The physical current date (client local) — used for relative date arithmetic like "yesterday" */
+  actualDate?: string
   userContext?: string
   dayLogs?: DayLog[]
   /** true = an open day session exists; all logs default to `date`. false = neutral state, ask user. */
@@ -69,10 +72,10 @@ const GLOBAL_ANTI_HALLUCINATION_RULES = `
 3. **Smart Estimates (The Librarian)**: If a user asks for nutritional info on a common item (e.g. "Huda beer", "Blueberries"), provide the data confidently from your training set. **NEVER say "I don't have internet access" or "I can't look that up".** Simply provide the best estimate and fill out the log card.
 4. **Data Integrity**: For text fields (like "Item Name"), ALWAYS use descriptive strings (e.g., "Huda Beer 300ml"). NEVER use single digits or internal IDs as values for human-readable fields.
 5. **Active Day Session / Date Logic** (NON-NEGOTIABLE):
-   - **ACTIVE SESSION**: The current logging date is {{TODAY}}. This date is locked — log ALL data to {{TODAY}} by default. NEVER change this date unless the user explicitly names a different one (e.g. "log for yesterday", "5 days ago", "March 3rd").
-   - **Relative dates**: When the user specifies a relative or explicit past/future date, compute the exact YYYY-MM-DD from {{TODAY}} and use it in the action card's "date" field. Examples: "yesterday" → {{TODAY}} minus 1 day. "5 days ago" → {{TODAY}} minus 5 days. "last Friday" → most recent past Friday from {{TODAY}}. "March 3rd" → use that date directly.
-   - **Explicit date overrides**: If the user says "log for [any date that is NOT {{TODAY}}]", honour that date exactly — compute it, set it in the card, and mention it in your reply so the user can confirm.
-   - NEVER use {{TODAY}} when the user specifies a different day.
+   - **ACTIVE LOGGING DATE**: The locked logging date is {{TODAY}}. Log ALL data to {{TODAY}} by default. NEVER change this date unless the user explicitly names a different one.
+   - **Relative date arithmetic**: Relative terms ("yesterday", "5 days ago", "last Friday") are ALWAYS computed from the ACTUAL CURRENT DATE ({{ACTUAL_TODAY}}), NOT from the locked logging date. Examples: "yesterday" → {{ACTUAL_TODAY}} minus 1 day. "5 days ago" → {{ACTUAL_TODAY}} minus 5 days. "last Friday" → most recent past Friday before {{ACTUAL_TODAY}}.
+   - **Explicit date overrides**: If the user specifies any date (relative or absolute) that differs from {{TODAY}}, use that computed date in the action card's "date" field. ALWAYS produce the action card — it is the confirmation mechanism. Never skip or delay the action card for a different date.
+   - NEVER use {{TODAY}} when the user has specified a different day.
 6. **Atomic Logging (Default) — Honour User Intent to Combine**: By default, each DISTINCT food item, supplement, or entity MUST be its own separate LOG_DATA action. Example: "Burger and Cola" = TWO LOG_DATA actions. HOWEVER: if the user explicitly says "log as one item", "combine them", "log it together", or any similar intent to merge — you MUST produce a SINGLE LOG_DATA action. When combining: the item name should reflect the combined meal; EVERY macro field (calories, protein, carbs, fat, etc.) MUST be the arithmetic sum of all constituent items — do NOT re-estimate, do NOT average, ADD the numbers. Example: Item A (300 kcal, 10g protein) + Item B (516 kcal, 51g protein) = combined (816 kcal, 61g protein). Never produce a combined entry with macros lower than the largest single item.
 7. **Tracker ID Rule**: The \`trackerId\` field in LOG_DATA MUST be the exact UUID \`id:\` value from the Available Trackers list (e.g. 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'). NEVER use tracker names, descriptions, or any placeholder text as \`trackerId\`. If you cannot find the tracker's exact ID in the list, do NOT output a LOG_DATA action. When correcting, editing, or updating data from a previous message in this conversation, you MUST use the SAME trackerId as the original action. NEVER generate a new UUID for a correction. Look up the tracker from the Available Trackers list EVERY time you write an action card — even if you think you remember it.
 8. **Tracker Creation Flow**: If you help the user CREATE a new tracker in this conversation, do NOT output a LOG_DATA action for that tracker in the same response. The tracker needs to be saved first. After creation, tell the user it's ready and they can now log to it.
@@ -140,9 +143,10 @@ Model: "Great, I've filled out the Food card with the estimated macros for 300ml
 `
 
 export function buildHealthSystemPrompt(params: BuildHealthSystemPromptParams): string {
-  // Use the client-supplied local date (sent from the browser) so the AI knows the user's
-  // real calendar day. Falls back to UTC server date only when no date is provided.
   const today = params.date ?? new Date().toISOString().split('T')[0]
+  // Physical current date — used for relative date arithmetic ("yesterday", "5 days ago")
+  // When a day session is active, today ≠ actualToday (e.g. locked on 7/3 but it's now 8/3)
+  const actualToday = params.actualDate ?? today
   const daySessionActive = params.daySessionActive ?? false
   const trackerSection = buildTrackerSection(params.trackers)
   const masterBrain = params.userContext ? `${params.userContext}\n---\n` : ''
@@ -157,7 +161,7 @@ When the user provides health data to log and has NOT specified a date:
 1. Do NOT immediately produce a LOG_DATA action card.
 2. Ask: "Just to confirm — should I log this for today (${today}) or a different date?"
 3. Once the user confirms the date, produce the action card with that date.
-If the user HAS explicitly named a date (e.g. "log this for yesterday", "log for March 5th"), skip the confirmation and log directly to that computed date.
+If the user HAS explicitly named a date (e.g. "log this for yesterday", "log for March 5th"), produce the action card directly with that computed date — no confirmation question needed. The action card IS the confirmation.
 `
 
   return `${masterBrain}You are YAHA, Armaan's executive health manager. Help Armaan log his life with zero friction.
@@ -172,9 +176,10 @@ You have DIRECT access to Armaan's health tracker database. When you produce a L
 - NEVER say "I cannot log items" or any variation of this
 Your job is to produce a correctly-formed action card. The app writes it to the database when confirmed. You ARE the logging interface.
 
-Today's date: ${today}
+Active logging date: ${today}
+Actual current date: ${actualToday}
 ${neutralDateRule}
-${GLOBAL_ANTI_HALLUCINATION_RULES.replace(/{{TODAY}}/g, today)}
+${GLOBAL_ANTI_HALLUCINATION_RULES.replace(/{{TODAY}}/g, today).replace(/{{ACTUAL_TODAY}}/g, actualToday)}
 
 ## CURRENT DAY ACTIVITY (${today})
 ${summary}
@@ -213,9 +218,9 @@ ${FEW_SHOT_EXAMPLES.replace(/{{TODAY}}/g, today)}
 `
 }
 
-export function buildRoutineSystemPrompt(routine: Routine, trackers: Tracker[], currentStepIndex: number = 0, userContext?: string, dayLogs?: DayLog[], date?: string): string {
+export function buildRoutineSystemPrompt(routine: Routine, trackers: Tracker[], currentStepIndex: number = 0, userContext?: string, dayLogs?: DayLog[], date?: string, actualDate?: string): string {
   if (!routine.steps || routine.steps.length === 0) {
-    return buildHealthSystemPrompt({ trackers, userContext, dayLogs, date })
+    return buildHealthSystemPrompt({ trackers, userContext, dayLogs, date, actualDate })
   }
   // Use client-supplied local date so routine logs land on the user's correct calendar day
   const today = date ?? new Date().toISOString().split('T')[0]

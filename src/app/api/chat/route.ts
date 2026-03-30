@@ -191,6 +191,10 @@ export async function POST(req: Request): Promise<Response> {
         session.active_routine_id = routine.id
         session.current_step_index = 0
         activeRoutine = routine
+        // Start Day: lock the logging date at TRIGGER time (not at completion)
+        if (routine.type === 'day_start') {
+          markDayStarted(today).catch(e => console.error('[DayState] markDayStarted (trigger) failed:', e))
+        }
       }
     } else if (routineMatchResult) {
       const routineMatch = routineMatchResult
@@ -202,6 +206,10 @@ export async function POST(req: Request): Promise<Response> {
       session.active_routine_id = routineMatch.id
       session.current_step_index = 0
       activeRoutine = routineMatch
+      // Start Day: lock the logging date at TRIGGER time (not at completion)
+      if (routineMatch.type === 'day_start') {
+        markDayStarted(today).catch(e => console.error('[DayState] markDayStarted (trigger) failed:', e))
+      }
     }
 
     // Map history for Gemini — include stored image attachments so follow-up
@@ -261,14 +269,14 @@ export async function POST(req: Request): Promise<Response> {
     let systemPrompt: string
     if (activeRoutine) {
       console.log(`[ChatRoute] Using routine prompt: ${activeRoutine.name} (Step ${session.current_step_index + 1})`)
-      systemPrompt = buildRoutineSystemPrompt(activeRoutine, trackers, session.current_step_index, brainContext, dayLogs, loggingDate)
+      systemPrompt = buildRoutineSystemPrompt(activeRoutine, trackers, session.current_step_index, brainContext, dayLogs, loggingDate, today)
     } else if (activeAgent) {
       console.log(`[ChatRoute] Using agent prompt: ${activeAgent.name}`)
-      const yahaSection = buildHealthSystemPrompt({ trackers, date: loggingDate, userContext: brainContext, dayLogs, daySessionActive })
+      const yahaSection = buildHealthSystemPrompt({ trackers, date: loggingDate, actualDate: today, userContext: brainContext, dayLogs, daySessionActive })
       systemPrompt = `${activeAgent.system_prompt}\n\n---\n## YAHA HEALTH LOGGING CAPABILITIES\n${yahaSection}`
     } else {
       console.log(`[ChatRoute] Using standard health prompt. daySession=${daySessionActive ? loggingDate : 'neutral'}`)
-      systemPrompt = buildHealthSystemPrompt({ trackers, date: loggingDate, userContext: brainContext, dayLogs, daySessionActive })
+      systemPrompt = buildHealthSystemPrompt({ trackers, date: loggingDate, actualDate: today, userContext: brainContext, dayLogs, daySessionActive })
     }
 
     // Build ChatInput
@@ -338,14 +346,11 @@ export async function POST(req: Request): Promise<Response> {
             active_routine_id: null,
             current_step_index: 0 
           })
-          // Fire-and-forget day state update based on routine type.
-          // Pass the client's local date so the session row uses the correct calendar day.
-          if (activeRoutine.type === 'day_start') {
-            markDayStarted(today).catch(e => console.error('[DayState] markDayStarted failed:', e))
-          } else if (activeRoutine.type === 'day_end') {
-            // Close the active session by its own date, not necessarily today's UTC date
+          // End Day completion: close the active session by its own locked date
+          if (activeRoutine.type === 'day_end') {
             markDayEnded(loggingDate).catch(e => console.error('[DayState] markDayEnded failed:', e))
           }
+          // Note: Start Day is handled at TRIGGER time (above), not at completion
         } else {
           // Move to next
           await updateSession(session.id, { 

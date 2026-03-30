@@ -183,6 +183,17 @@ export async function POST(req: Request): Promise<Response> {
       // Direct routine hit from Dashboard button
       const routine = await fetchRoutine(routineId)
       if (routine) {
+        // Guard: block Start Day if a session is already open
+        if (routine.type === 'day_start' && activeDayState !== null) {
+          console.log(`[ChatRoute] Blocked Start Day — session already active for ${activeDayState.date}`)
+          await addMessage({ session_id: session.id, role: 'user', content: message || '', attachments: attachments ?? null })
+          const blockMsg = `Start day for ${activeDayState.date} is already in progress. Please end yesterday's session first before starting a new one.`
+          const savedBlock = await addMessage({ session_id: session.id, role: 'assistant', content: blockMsg, actions: [] })
+          return Response.json({
+            message: { id: savedBlock.id, role: 'assistant' as const, content: blockMsg, actions: [] },
+            sessionId: session.id,
+          } satisfies ChatResponse, { status: 200 })
+        }
         console.log(`[ChatRoute] Activating routine from ID: ${routine.name}`)
         await updateSession(session.id, {
           active_routine_id: routine.id,
@@ -198,6 +209,17 @@ export async function POST(req: Request): Promise<Response> {
       }
     } else if (routineMatchResult) {
       const routineMatch = routineMatchResult
+      // Guard: block Start Day if a session is already open
+      if (routineMatch.type === 'day_start' && activeDayState !== null) {
+        console.log(`[ChatRoute] Blocked Start Day — session already active for ${activeDayState.date}`)
+        await addMessage({ session_id: session.id, role: 'user', content: message || '', attachments: attachments ?? null })
+        const blockMsg = `Start day for ${activeDayState.date} is already in progress. Please end yesterday's session first before starting a new one.`
+        const savedBlock = await addMessage({ session_id: session.id, role: 'assistant', content: blockMsg, actions: [] })
+        return Response.json({
+          message: { id: savedBlock.id, role: 'assistant' as const, content: blockMsg, actions: [] },
+          sessionId: session.id,
+        } satisfies ChatResponse, { status: 200 })
+      }
       console.log(`[ChatRoute] Detected routine from text: ${routineMatch.name}`)
       await updateSession(session.id, {
         active_routine_id: routineMatch.id,

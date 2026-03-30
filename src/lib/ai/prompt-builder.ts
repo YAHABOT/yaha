@@ -269,14 +269,19 @@ NEVER tell the user you cannot log, save, push, or write data.
 NEVER say "Approved and Logged" means you merely prepared a log-ready format — it means the user's confirmation triggers a real database insertion.
 `
 
+  // Physical current date — used for relative date arithmetic ("yesterday", "5 days ago")
+  // When a day session is active, today (loggingDate) ≠ actualToday (device date)
+  const actualToday = actualDate ?? today
+
   return `${masterBrain}You are YAHA, executing the "${routine.name}" routine for Armaan.
 Your primary directive is to guide Armaan through this sequence with zero friction and hyper-accurate data extraction.
 
 ${DB_ACCESS_BLOCK}
 
 Today's date: ${today}
+Actual current date: ${actualToday}
 
-${GLOBAL_ANTI_HALLUCINATION_RULES.replace(/{{TODAY}}/g, today)}
+${GLOBAL_ANTI_HALLUCINATION_RULES.replace(/{{TODAY}}/g, today).replace(/{{ACTUAL_TODAY}}/g, actualToday)}
 
 ## ⚠️ ROUTINE STEP IDENTITY RULE
 The word "Step" in this routine ALWAYS refers to an item in the numbered sequence below.

@@ -231,6 +231,25 @@ export async function addMessage(input: CreateMessageInput): Promise<ChatMessage
   return data as ChatMessage
 }
 
+/**
+ * Persist the current routine step index to the DB.
+ * Call whenever the step advances so page reload can resume at the correct step.
+ * Pass null to clear (routine complete or cancelled).
+ */
+export async function updateRoutineStep(sessionId: string, step: number | null): Promise<void> {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const { error } = await supabase
+    .from('chat_sessions')
+    .update({ current_step_index: step, updated_at: new Date().toISOString() })
+    .eq('id', sessionId)
+    .eq('user_id', user.id)
+
+  if (error) throw new Error(`Failed to update routine step: ${error.message}`)
+}
+
 export async function getRecentMessagesForAI(
   sessionId: string,
   limit: number = DEFAULT_AI_CONTEXT_LIMIT

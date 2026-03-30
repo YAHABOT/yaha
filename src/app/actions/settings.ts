@@ -4,6 +4,18 @@ import { revalidatePath } from 'next/cache'
 import { upsertUserProfile } from '@/lib/db/users'
 import type { UserTargets } from '@/lib/db/users'
 
+export async function updateConfirmOnRefreshAction(
+  enabled: boolean
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    await upsertUserProfile({ stats: { confirmOnRefresh: enabled } })
+    revalidatePath('/settings')
+    return { success: true }
+  } catch {
+    return { error: 'Failed to save preference' }
+  }
+}
+
 const MAX_ALIAS_LENGTH = 50
 const MAX_TELEGRAM_LENGTH = 50
 const MAX_CALORIES = 10000

@@ -3,7 +3,8 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import {
-  saveSettingsAction
+  saveSettingsAction,
+  updateConfirmOnRefreshAction
 } from '@/app/actions/settings'
 import { signOut } from '@/app/actions/auth'
 import type { User } from '@/lib/db/users'
@@ -71,6 +72,9 @@ export function SettingsForm({ initialValues }: Props): React.ReactElement {
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [confirmOnRefresh, setConfirmOnRefresh] = useState<boolean>(
+    initialValues?.stats?.confirmOnRefresh ?? true
+  )
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault()
@@ -98,6 +102,13 @@ export function SettingsForm({ initialValues }: Props): React.ReactElement {
     localStorage.clear()
     sessionStorage.clear()
     alert('Local data cleared.')
+  }
+
+  function handleConfirmOnRefreshToggle(enabled: boolean): void {
+    setConfirmOnRefresh(enabled)
+    startTransition(async () => {
+      await updateConfirmOnRefreshAction(enabled)
+    })
   }
 
   function handleExportJson(): void {
@@ -208,6 +219,33 @@ export function SettingsForm({ initialValues }: Props): React.ReactElement {
         </div>
       </Section>
 
+      {/* Preferences */}
+      <Section title="Preferences" description="Behaviour and safety settings.">
+        <div className="flex items-center justify-between rounded-2xl border border-white/5 bg-black/20 px-5 py-4">
+          <div>
+            <p className="text-sm font-bold text-textPrimary">Confirm on page refresh</p>
+            <p className="text-xs text-textMuted opacity-60 mt-0.5">
+              Show a warning before refreshing while a routine is active
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={confirmOnRefresh}
+            onClick={() => handleConfirmOnRefreshToggle(!confirmOnRefresh)}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+              confirmOnRefresh ? 'bg-nutrition' : 'bg-white/10'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg transition-transform duration-200 ${
+                confirmOnRefresh ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+      </Section>
+
       {/* Communication Channels */}
       <Section title="Communication Channels" description="Sync with your external messenger handles.">
         <div className="grid gap-4 md:grid-cols-2">
@@ -287,17 +325,16 @@ export function SettingsForm({ initialValues }: Props): React.ReactElement {
         </button>
       </div>
 
-      {/* Logout */}
+      {/* Logout — type="button" prevents submitting the outer settings form */}
       <div className="flex items-center justify-center pb-4">
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="group flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-6 py-3 text-[11px] font-black uppercase tracking-widest text-red-400/70 transition-all duration-200 hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400"
-          >
-            <LogOut className="h-4 w-4 opacity-60 group-hover:opacity-100 transition-opacity" />
-            Sign Out
-          </button>
-        </form>
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="group flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-6 py-3 text-[11px] font-black uppercase tracking-widest text-red-400/70 transition-all duration-200 hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400"
+        >
+          <LogOut className="h-4 w-4 opacity-60 group-hover:opacity-100 transition-opacity" />
+          Sign Out
+        </button>
       </div>
 
     </form>

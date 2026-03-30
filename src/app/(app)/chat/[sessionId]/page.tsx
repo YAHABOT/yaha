@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { notFound } from 'next/navigation'
 import { getSessions, getSession, getMessages } from '@/lib/db/chat'
 import { getRoutine } from '@/lib/db/routines'
+import { getUser } from '@/lib/db/users'
 import { ChatSidebar } from '@/components/chat/ChatSidebar'
 import { ChatInterface } from '@/components/chat/ChatInterface'
 
@@ -16,21 +17,23 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
   const { routine: routineParam } = await searchParams
 
   if (sessionId === 'new') {
-    const [sessions, initialRoutine] = await Promise.all([
+    const [sessions, initialRoutine, userProfile] = await Promise.all([
       getSessions(),
-      routineParam ? getRoutine(routineParam).catch(() => null) : Promise.resolve(null)
+      routineParam ? getRoutine(routineParam).catch(() => null) : Promise.resolve(null),
+      getUser().catch(() => null),
     ])
 
     return (
-      <div className="flex h-full">
+      <div className="flex h-full min-h-0 overflow-hidden">
         <ChatSidebar sessions={sessions} />
-        <div className="flex flex-1 flex-col min-h-0 bg-background">
+        <div className="flex flex-1 flex-col min-h-0 overflow-hidden bg-background">
           <ChatInterface
             initialMessages={[]}
             sessionId="new"
             session={null}
             initialRoutine={initialRoutine}
             sessions={sessions}
+            confirmOnRefresh={userProfile?.stats?.confirmOnRefresh ?? true}
           />
         </div>
       </div>
@@ -43,6 +46,7 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
   // Phase 2: join getSessions with getRoutine (which needs active_routine_id from phase 1).
   //   This eliminates any case where a slow getSessions delays the final render.
   const sessionsPromise = getSessions()
+  const userProfilePromise = getUser().catch(() => null)
 
   const [session, messages] = await Promise.all([
     getSession(sessionId).catch(() => null),
@@ -51,11 +55,12 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
 
   if (!session) notFound()
 
-  const [sessions, routine] = await Promise.all([
+  const [sessions, routine, userProfile] = await Promise.all([
     sessionsPromise,
     session.active_routine_id
       ? getRoutine(session.active_routine_id).catch(() => null)
       : Promise.resolve(null),
+    userProfilePromise,
   ])
 
   const sessionData = { session, messages, routine }
@@ -70,6 +75,7 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
           session={sessionData.session}
           initialRoutine={sessionData.routine}
           sessions={sessions}
+          confirmOnRefresh={userProfile?.stats?.confirmOnRefresh ?? true}
         />
       </div>
     </div>

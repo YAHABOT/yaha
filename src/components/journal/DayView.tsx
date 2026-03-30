@@ -177,8 +177,8 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
 
       {/* ── Main Content ── */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Header bar — sticky top-0 so it pins while content scrolls beneath */}
-        <div className="sticky top-0 z-10 flex flex-shrink-0 items-center justify-between border-b border-white/5 bg-surface/60 px-4 py-3 backdrop-blur-md">
+        {/* Header bar — flex-shrink-0 keeps it fixed-height inside the flex-col while content scrolls below */}
+        <div className="z-10 flex flex-shrink-0 items-center justify-between border-b border-white/5 bg-surface/60 px-4 py-3 backdrop-blur-md">
           <div className="flex items-center gap-1.5">
             {/* Mobile hamburger — hidden on desktop */}
             <button

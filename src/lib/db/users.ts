@@ -2,7 +2,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { getSafeUser } from '@/lib/supabase/auth'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-const USER_COLUMNS = 'id, alias, targets, telegram_handle'
+const USER_COLUMNS = 'id, alias, targets, stats, telegram_handle'
 
 export type UserTargets = {
   calories?: number
@@ -11,16 +11,22 @@ export type UserTargets = {
   steps?: number
 }
 
+export type UserStats = {
+  confirmOnRefresh?: boolean
+}
+
 export type User = {
   id: string
   alias: string | null
   targets: UserTargets
+  stats: UserStats
   telegram_handle: string | null
 }
 
 export type UpsertUserInput = {
   alias?: string
   targets?: UserTargets
+  stats?: UserStats
   telegram_handle?: string
 }
 
@@ -47,6 +53,7 @@ export async function getUser(id?: string, supabaseClient?: SupabaseClient): Pro
     id: data.id,
     alias: data.alias ?? null,
     targets: (data.targets as UserTargets) ?? {},
+    stats: (data.stats as UserStats) ?? {},
     telegram_handle: data.telegram_handle ?? null,
   }
 }
@@ -59,6 +66,7 @@ export async function upsertUserProfile(input: UpsertUserInput): Promise<User> {
   const upsertPayload: Record<string, unknown> = { id: user.id }
   if (input.alias !== undefined) upsertPayload.alias = input.alias
   if (input.targets !== undefined) upsertPayload.targets = input.targets
+  if (input.stats !== undefined) upsertPayload.stats = input.stats
   if (input.telegram_handle !== undefined) upsertPayload.telegram_handle = input.telegram_handle
 
   const { data, error } = await supabase
@@ -73,6 +81,7 @@ export async function upsertUserProfile(input: UpsertUserInput): Promise<User> {
     id: data.id,
     alias: data.alias ?? null,
     targets: (data.targets as UserTargets) ?? {},
+    stats: (data.stats as UserStats) ?? {},
     telegram_handle: data.telegram_handle ?? null,
   }
 }

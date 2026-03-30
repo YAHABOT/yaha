@@ -22,6 +22,9 @@ function getLocalDateStr(): string {
 }
 
 const MAX_TEXTAREA_ROWS = 6
+// Routine trigger TTL: 30 minutes. Prevents re-firing on page reload when the
+// routine is still in progress. Legitimate re-starts work after the TTL expires.
+const ROUTINE_TRIGGER_TTL_MS = 30 * 60 * 1000
 const ACCEPTED_IMAGE_TYPES = 'image/*'
 // Gemini inlineData only supports text/plain, text/csv, and application/pdf — Office formats excluded
 const ACCEPTED_FILE_TYPES = '.txt,.pdf,.csv,application/pdf,text/plain,text/csv'
@@ -65,9 +68,10 @@ type Props = {
   session: ChatSession | null
   initialRoutine?: Routine | null
   sessions?: ChatSession[]
+  confirmOnRefresh?: boolean
 }
 
-export function ChatInterface({ initialMessages, sessionId, session: initialSession, initialRoutine, sessions = [] }: Props): React.ReactElement {
+export function ChatInterface({ initialMessages, sessionId, session: initialSession, initialRoutine, sessions = [], confirmOnRefresh = true }: Props): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [input, setInput] = useState<string>('')
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -102,6 +106,17 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   // Mark hydrated after first client paint so the messages area doesn't flash unstyled
   useEffect(() => { setIsHydrated(true) }, [])
 
+  // Warn before page refresh/close when a routine is actively in progress
+  useEffect(() => {
+    if (!confirmOnRefresh || !currentRoutine || !session?.active_routine_id) return
+    const handler = (e: BeforeUnloadEvent): void => {
+      e.preventDefault()
+      e.returnValue = ''  // Required for Chrome to show the native dialog
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [confirmOnRefresh, currentRoutine, session?.active_routine_id])
+
   // FIX-4: track mount state to prevent state updates after unmount (e.g. app switch)
   const isMountedRef = useRef(true)
   useEffect(() => {
@@ -125,23 +140,43 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   }, [])
 
   // Auto-trigger ritual if routine param is provided.
-  // Double-locked: triggerSent.current (per-instance) + sessionStorage (survives
-  // React StrictMode remounts) with a 5s TTL to allow legitimate re-starts.
+  // Triple-locked: triggerSent.current (per-instance) + sessionStorage TTL (survives
+  // React StrictMode remounts + short navigations) + active_routine_id DB state (survives
+  // full page reloads by redirecting to the real session URL).
   useEffect(() => {
     if (triggerSent.current) return
     const routineId = searchParams.get('routine')
     if (!routineId || sessionId !== 'new' || messages.length > 0) return
 
+    // If a routine is already active in the current session state, skip re-trigger.
+    // This handles the case where session state was refreshed after initial trigger.
+    if (session?.active_routine_id) return
+
     const storageKey = `yaha_trigger_${routineId}`
+    const sessionKey = `yaha_trigger_session_${routineId}`
     const lastTs = sessionStorage.getItem(storageKey)
-    if (lastTs && Date.now() - Number(lastTs) < 5_000) return
+
+    // If we previously triggered this routine and have a real session ID stored,
+    // redirect to that session so the DB state (active_routine_id, current_step_index)
+    // is loaded on next mount — preventing a re-start from step 0.
+    const savedSessionId = sessionStorage.getItem(sessionKey)
+    if (lastTs && savedSessionId && Date.now() - Number(lastTs) < ROUTINE_TRIGGER_TTL_MS) {
+      router.replace(`/chat/${savedSessionId}`)
+      return
+    }
+
+    // Clear stale session key if TTL expired
+    if (!lastTs || Date.now() - Number(lastTs) >= ROUTINE_TRIGGER_TTL_MS) {
+      sessionStorage.removeItem(sessionKey)
+    }
 
     triggerSent.current = true
     sessionStorage.setItem(storageKey, String(Date.now()))
 
     const trigger = currentRoutine?.trigger_phrase || 'start ritual'
     handleSendInternal(trigger, routineId)
-  }, [searchParams, sessionId, messages.length, currentRoutine])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, sessionId, messages.length, currentRoutine, session?.active_routine_id, router])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -211,6 +246,13 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
           }
         } else {
           setCurrentRoutine(null)
+          // Routine completed via silent auto-advance — clear the session storage
+          // entry so the next trigger starts fresh rather than redirecting here.
+          const routineParam = searchParams.get('routine')
+          if (routineParam) {
+            sessionStorage.removeItem(`yaha_trigger_${routineParam}`)
+            sessionStorage.removeItem(`yaha_trigger_session_${routineParam}`)
+          }
         }
       }
     } catch {
@@ -283,6 +325,12 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       // The URL stays as /chat/new for the lifetime of this unsaved chat.
       if (data.sessionId !== currentSessionId) {
         setCurrentSessionId(data.sessionId)
+      }
+
+      // Persist the real session ID for active routine so page refresh can redirect
+      // to /chat/[sessionId] instead of re-triggering the routine from step 0.
+      if (routineId && data.sessionId) {
+        sessionStorage.setItem(`yaha_trigger_session_${routineId}`, data.sessionId)
       }
     } catch (e: unknown) {
       if (e instanceof DOMException && e.name === 'AbortError') return // navigated away
@@ -437,6 +485,14 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
           }
         } else {
           setCurrentRoutine(null)
+          // Routine completed — clear the session storage entry so the next start
+          // of the same routine creates a fresh session rather than redirecting to
+          // this completed one.
+          const routineParam = searchParams.get('routine')
+          if (routineParam) {
+            sessionStorage.removeItem(`yaha_trigger_${routineParam}`)
+            sessionStorage.removeItem(`yaha_trigger_session_${routineParam}`)
+          }
         }
       }
 

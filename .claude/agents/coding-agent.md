@@ -10,13 +10,19 @@ description: Implements YAHA features. Invoked by orchestrator with a lean promp
 - **Reason**: Speed, high rate limits, and superior Next.js 15 instruction following.
 - **Action**: Start session with `/model sonnet`.
 
+## Model Switching for Output Efficiency
+- **During implementation**: Use `claude-sonnet-4-6` (complex logic, code generation)
+- **When writing TECHNICAL_LOG**: Switch to `/model haiku` — writing/formatting is not cognitively demanding
+- **When returning to analysis**: Switch back to `/model sonnet` if needed for next task
+
+This saves output tokens (5x cost multiplier) without sacrificing implementation quality.
+
 ## Before Writing Any Code
 
-
-1. **Read your assigned rules files** (listed in the task prompt). Do not guess patterns.
-2. **Read your assigned skill file** if the task includes one. Follow it exactly.
-3. **Find the pattern reference file** (listed in the task prompt). Read it. Match its style.
-4. **Confirm you understand the task** by restating it in one sentence before starting.
+1. **Read your assigned skill file** if the task includes one. Follow it exactly.
+2. **Find the pattern reference file** (listed in the task prompt). Read it. Match its style.
+3. **Confirm you understand the task** by restating it in one sentence before starting.
+4. **Rules auto-discovery**: Folder-level `claude.md` files (in `src/components/`, `src/lib/db/`, `src/app/api/`) provide scoped rules. Load them naturally as you work in each folder.
 
 ## Implementation Checklist
 
@@ -74,6 +80,40 @@ If you hit a blocker (missing env var, unclear requirement, ambiguous schema), r
 ## Files Changed
 - (none — no partial writes)
 ```
+
+## Build Artifact Checklist (P3 — Prevents Production Gaps)
+
+Before passing to Code Reviewer, verify all deliverables are complete:
+
+```
+- [ ] UI elements visible? (routes render, buttons/toggles appear on screen)
+- [ ] Database migration applied? (schema change in place, not pending)
+- [ ] Route resolves? (no 404 or routing errors)
+- [ ] Environment variables set? (all .env keys referenced in code exist)
+- [ ] Secrets never logged? (no `console.log(process.env.SECRET_KEY)`)
+- [ ] Error messages are meaningful? (users see helpful text, not stack traces)
+```
+
+**Why:** V26-4 shipped with missing toggle because the feature was incomplete. This checklist catches missing UI elements before CR review.
+
+## Limiting Defensive Documentation (P2 — Token Efficiency)
+
+When writing TECHNICAL_LOG findings, minimize explanation of code that wasn't changed:
+
+**Bad (defensive, wastes tokens):**
+```
+The session load guard in line 45-52 was already correct and handles
+the timeout properly. We didn't modify this section because it already
+validates the session ID and refreshes the token on load. The logic
+prevents race conditions and is secure.
+```
+
+**Good (concise, focused):**
+```
+Session load guard (line 45-52) already worked; no changes needed. Our fix adds sessionStorage TTL extension (line 61-68).
+```
+
+**Rule:** If you didn't change it, mention it in one sentence max. No need to defend unchanged code.
 
 ## Validation Before Returning
 

@@ -5,24 +5,12 @@ import { TrackerDayGroup } from '@/components/journal/TrackerDayGroup'
 import type { Tracker } from '@/types/tracker'
 import type { TrackerLog } from '@/types/log'
 
-// Mock lucide-react icons
-vi.mock('lucide-react', () => ({
-  ChevronLeft: ({ className }: { className?: string }) => (
-    <span data-testid="icon-chevron-left" className={className} />
-  ),
-  ChevronRight: ({ className }: { className?: string }) => (
-    <span data-testid="icon-chevron-right" className={className} />
-  ),
-  GitBranch: ({ className }: { className?: string }) => (
-    <span data-testid="icon-git-branch" className={className} />
-  ),
-  Eye: ({ className }: { className?: string }) => (
-    <span data-testid="icon-eye" className={className} />
-  ),
-  Plus: ({ className }: { className?: string }) => (
-    <span data-testid="icon-plus" className={className} />
-  ),
-}))
+// lucide-react mock — covers all icons used by DayView and sub-components
+// Note: values must be inlined — vi.mock is hoisted before const declarations
+vi.mock('lucide-react', () => {
+  const I = ({ className }: { className?: string }) => <span className={className} />
+  return { ChevronLeft: I, ChevronRight: I, GitBranch: I, Eye: I, Plus: I, Menu: I, X: I }
+})
 
 // Mock next/navigation for DateNav (client component)
 vi.mock('next/navigation', () => ({
@@ -184,7 +172,7 @@ describe('TrackerDayGroup', () => {
     expect(screen.getByText('28 g')).toBeInTheDocument()
   })
 
-  it('falls back to fieldId when field not in schema', () => {
+  it('does not render fields not present in tracker schema', () => {
     const logWithUnknownField: TrackerLog = {
       ...MOCK_LOG_NUTRITION,
       fields: { unknown_field_xyz: 99 },
@@ -192,8 +180,8 @@ describe('TrackerDayGroup', () => {
     render(
       <TrackerDayGroup tracker={MOCK_TRACKER_NUTRITION} logs={[logWithUnknownField]} />
     )
-    // Should show the raw fieldId as label
-    expect(screen.getByText('unknown_field_xyz')).toBeInTheDocument()
+    // Component renders only schema-defined fields — unknown fields are silently ignored
+    expect(screen.queryByText('unknown_field_xyz')).not.toBeInTheDocument()
   })
 
   it('shows null field values as ---', () => {

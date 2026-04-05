@@ -62,10 +62,10 @@ export function DashboardClient({
   return (
     <div className="flex flex-col gap-5 p-4 md:p-6">
       {/* Routine banners */}
-      {dayStartRoutine && (!dayState?.day_started_at || dayState?.day_ended_at) && (
+      {dayStartRoutine && !dayState && (
         <RoutineBanner routine={dayStartRoutine} type="day_start" />
       )}
-      {dayEndRoutine && !dayState?.day_ended_at && (devMode || new Date().getHours() >= 19) && (
+      {dayEndRoutine && dayState?.day_started_at && !dayState?.day_ended_at && (
         <RoutineBanner routine={dayEndRoutine} type="day_end" />
       )}
 

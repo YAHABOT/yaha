@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { CreateTrackerInput, UpdateTrackerInput, SchemaField } from '@/types/tracker'
 
+const mockGetSafeUser = vi.hoisted(() => vi.fn())
+
 // --- Mock setup -----------------------------------------------------------
 
 type QueryResult = { data: unknown; error: { message: string } | null }
@@ -25,6 +27,13 @@ function createQueryBuilder(): ChainableBuilder {
   builder.eq = vi.fn(() => builder)
   builder.order = vi.fn(() => builder)
   builder.single = vi.fn(() => builder)
+  builder.gte = vi.fn(() => builder)
+  builder.lte = vi.fn(() => builder)
+  builder.or = vi.fn(() => builder)
+  builder.is = vi.fn(() => builder)
+  builder.in = vi.fn(() => builder)
+  builder.limit = vi.fn(() => builder)
+  builder.maybeSingle = vi.fn(() => builder)
 
   // Make the builder thenable so `await` resolves to _result
   builder.then = vi.fn((resolve: (v: QueryResult) => void) =>
@@ -48,16 +57,26 @@ vi.mock('@/lib/supabase/server', () => ({
   ),
 }))
 
+vi.mock('@/lib/supabase/auth', () => ({
+  getSafeUser: mockGetSafeUser,
+}))
+
+vi.mock('@/lib/db/logs', () => ({
+  getTrackerLogSummaries: vi.fn().mockResolvedValue([]),
+}))
+
 // --- Helpers ---------------------------------------------------------------
 
 const FAKE_USER = { id: 'user-123', email: 'test@example.com' }
 
 function setAuthenticatedUser(): void {
   mockGetUser.mockResolvedValue({ data: { user: FAKE_USER }, error: null })
+  mockGetSafeUser.mockResolvedValue(FAKE_USER)
 }
 
 function setUnauthenticatedUser(): void {
   mockGetUser.mockResolvedValue({ data: { user: null }, error: null })
+  mockGetSafeUser.mockResolvedValue(null)
 }
 
 /**
@@ -125,12 +144,15 @@ describe('getTrackers', () => {
 
   it('returns tracker data on success', async () => {
     setAuthenticatedUser()
-    const trackers = [{ id: 't-1', name: 'Nutrition' }]
+    const trackers = [{ id: 't-1', name: 'Nutrition', schema: [] }]
     setQueryResult(trackers)
 
     const result = await getTrackers()
 
-    expect(result).toEqual(trackers)
+    // getTrackers augments trackers with today_stats and summary data
+    expect(result).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 't-1', name: 'Nutrition' }),
+    ]))
   })
 })
 

@@ -1,4 +1,41 @@
 import '@testing-library/jest-dom'
+import { expect, afterEach, vi } from 'vitest'
+import { cleanup } from '@testing-library/react'
 
-// Set required env vars for tests — modules with module-level guards need these set before import
-process.env.GEMINI_API_KEY = 'test-gemini-key-for-vitest'
+// Cleanup after each test
+afterEach(() => {
+  cleanup()
+})
+
+// Mock window.matchMedia
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation(query => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+})
+
+// Suppress console errors in tests (optional)
+const originalError = console.error
+beforeAll(() => {
+  console.error = (...args: unknown[]) => {
+    if (
+      typeof args[0] === 'string' &&
+      args[0].includes('Warning: ReactDOM.render')
+    ) {
+      return
+    }
+    originalError.call(console, ...args)
+  }
+})
+
+afterAll(() => {
+  console.error = originalError
+})

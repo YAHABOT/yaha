@@ -1,26 +1,60 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// vi.mock is hoisted before const declarations — use inline literals only inside the factory
-vi.mock('@google/genai', () => ({
-  GoogleGenAI: vi.fn().mockImplementation(() => ({
-    models: {
-      generateContent: vi.fn().mockResolvedValue({ text: 'I have logged your meal.' }),
-      generateContentStream: vi.fn().mockReturnValue(
-        (async function* () {
-          yield { text: 'chunk' }
-        })()
-      ),
-    },
+// ---------------------------------------------------------------------------
+// vi.hoisted runs before ALL imports — the only safe place to set env vars
+// that guard module-level code (gemini.ts throws if GEMINI_API_KEY is missing)
+// ---------------------------------------------------------------------------
+const { mockGenerateContent, mockGenerateContentStream, mockGetGenerativeModel } = vi.hoisted(() => {
+  process.env.GEMINI_API_KEY = 'test-api-key'
+  const mockGenerateContent = vi.fn()
+  const mockGenerateContentStream = vi.fn()
+  const mockGetGenerativeModel = vi.fn(() => ({
+    generateContent: mockGenerateContent,
+    generateContentStream: mockGenerateContentStream,
+  }))
+  return { mockGenerateContent, mockGenerateContentStream, mockGetGenerativeModel }
+})
+
+// Mock the correct package: @google/generative-ai, not @google/genai
+// API shape: new GoogleGenerativeAI(key) → { getGenerativeModel() → model }
+// model.generateContent({ contents }) → { response: { text: () => string } }
+// model.generateContentStream({ contents }) → { stream: AsyncIterable<{ text: () => string }> }
+vi.mock('@google/generative-ai', () => ({
+  GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
+    getGenerativeModel: mockGetGenerativeModel,
   })),
 }))
 
 import { processHealthMessage, streamHealthMessage, extractFromImage, GEMINI_MODEL } from '@/lib/ai/gemini'
 import type { ChatInput } from '@/types/action-card'
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeResponse(text: string) {
+  return { response: { text: () => text } }
+}
+
+function makeStreamResponse(chunks: string[]) {
+  return {
+    stream: (async function* () {
+      for (const chunk of chunks) {
+        yield { text: () => chunk }
+      }
+    })(),
+  }
+}
+
 const BASE_INPUT: ChatInput = {
   text: 'I had 350 calories of chicken',
   sessionId: 'session-abc',
 }
+
+beforeEach(() => {
+  mockGenerateContent.mockResolvedValue(makeResponse('I have logged your meal.'))
+  mockGenerateContentStream.mockReturnValue(makeStreamResponse(['chunk']))
+})
 
 // --- processHealthMessage ---
 
@@ -79,19 +113,10 @@ describe('processHealthMessage', () => {
       date: '2026-03-10',
       source: 'chat',
     }
-    // Override the mock for this specific test by using a fresh spy
-    const { GoogleGenAI } = await import('@google/genai')
-    const MockClass = GoogleGenAI as ReturnType<typeof vi.fn>
-    const existingInstance = MockClass.mock.results[0]?.value as {
-      models: { generateContent: ReturnType<typeof vi.fn> }
-    }
-    if (existingInstance) {
-      const responseWithJson = `Logged!\n\`\`\`json\n${JSON.stringify([actionCard])}\n\`\`\``
-      existingInstance.models.generateContent.mockResolvedValueOnce({ text: responseWithJson })
-    }
+    const responseWithJson = `Logged!\n\`\`\`json\n${JSON.stringify([actionCard])}\n\`\`\``
+    mockGenerateContent.mockResolvedValueOnce(makeResponse(responseWithJson))
 
     const result = await processHealthMessage(BASE_INPUT, 'system')
-    // Should have parsed the action card
     expect(result.actions.length).toBeGreaterThanOrEqual(1)
     if (result.actions.length > 0) {
       expect(result.actions[0].trackerId).toBe('tracker-1')

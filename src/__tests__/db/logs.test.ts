@@ -302,7 +302,7 @@ describe('updateLog', () => {
 
     await expect(
       updateLog('log-1', { fields: { fld_001: 999 } })
-    ).rejects.toThrow('Failed to update log: row not found')
+    ).rejects.toThrow('Failed to fetch log for merge: row not found')
   })
 })
 

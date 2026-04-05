@@ -6,22 +6,30 @@ import type { ActionCard } from '@/types/action-card'
 
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: vi.fn(),
-  }),
+  useRouter: () => ({ push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/chat',
 }))
 
-// Mock lucide-react icons
-vi.mock('lucide-react', () => ({
-  Paperclip: ({ className }: { className?: string }) => (
-    <span data-testid="icon-paperclip" className={className} />
-  ),
-  Send: ({ className }: { className?: string }) => (
-    <span data-testid="icon-send" className={className} />
-  ),
-  X: ({ className }: { className?: string }) => (
-    <span data-testid="icon-x" className={className} />
-  ),
+// lucide-react mock — covers all icons used by ChatInterface and its sub-components
+// Note: all values must be inlined — vi.mock is hoisted before const declarations
+vi.mock('lucide-react', () => {
+  const I = ({ className }: { className?: string }) => <span className={className} />
+  return {
+    Paperclip: I, Send: I, X: I, Bot: I, Zap: I, CheckCircle2: I, ChevronRight: I,
+    Menu: I, Image: I, FileText: I, Camera: I, Plus: I, Check: I, ChevronDown: I,
+    MessageSquare: I, Trash2: I, Pencil: I, CheckSquare: I, Square: I, ArrowLeft: I,
+  }
+})
+
+// Mock server actions — prevent next/headers from being called in test environment
+vi.mock('@/app/actions/agents', () => ({
+  getAgentsAction: vi.fn().mockResolvedValue([]),
+}))
+vi.mock('@/app/actions/chat', () => ({
+  renameSessionAction: vi.fn().mockResolvedValue({ success: true }),
+  deleteSessionAction: vi.fn().mockResolvedValue({ success: true }),
+  deleteSessionsAction: vi.fn().mockResolvedValue({ success: true }),
 }))
 
 // Mock ActionCard component
@@ -215,7 +223,7 @@ describe('ChatInterface', () => {
 
   it('shows empty state placeholder when no messages', () => {
     render(<ChatInterface initialMessages={[]} sessionId={SESSION_ID} />)
-    expect(screen.getByText('Send a message to get started.')).toBeInTheDocument()
+    expect(screen.getByText('Log health data, start a ritual, or ask anything about your wellbeing.')).toBeInTheDocument()
   })
 
   it('shows error message when fetch fails', async () => {

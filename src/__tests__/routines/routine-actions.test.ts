@@ -89,7 +89,7 @@ describe('createRoutineAction', () => {
     expect(result.error).toBeUndefined()
     expect(result.success).toBe(true)
     expect(mockCreateRoutine).toHaveBeenCalledWith(validInput)
-    expect(mockRevalidatePath).toHaveBeenCalledWith('/routines')
+    expect(mockRevalidatePath).toHaveBeenCalledWith('/settings/routines')
   })
 
   it('returns generic error for caught exceptions', async () => {
@@ -143,7 +143,7 @@ describe('updateRoutineAction', () => {
     expect(result.error).toBeUndefined()
     expect(result.success).toBe(true)
     expect(mockUpdateRoutine).toHaveBeenCalledWith('r-1', { name: 'Updated' })
-    expect(mockRevalidatePath).toHaveBeenCalledWith('/routines')
+    expect(mockRevalidatePath).toHaveBeenCalledWith('/settings/routines')
   })
 
   it('skips name validation when name is not provided', async () => {
@@ -173,7 +173,7 @@ describe('deleteRoutineAction', () => {
     expect(result.error).toBeUndefined()
     expect(result.success).toBe(true)
     expect(mockDeleteRoutine).toHaveBeenCalledWith('r-1')
-    expect(mockRevalidatePath).toHaveBeenCalledWith('/routines')
+    expect(mockRevalidatePath).toHaveBeenCalledWith('/settings/routines')
   })
 
   it('returns generic error for caught exceptions', async () => {

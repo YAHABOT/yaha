@@ -26,6 +26,12 @@ function createQueryBuilder(): ChainableBuilder {
   builder.order = vi.fn(() => builder)
   builder.single = vi.fn(() => builder)
   builder.limit = vi.fn(() => builder)
+  builder.or = vi.fn(() => builder)
+  builder.gte = vi.fn(() => builder)
+  builder.is = vi.fn(() => builder)
+  builder.in = vi.fn(() => builder)
+  builder.not = vi.fn(() => builder)
+  builder.maybeSingle = vi.fn(() => builder)
 
   // Make the builder thenable so `await` resolves to _result
   builder.then = vi.fn((resolve: (v: QueryResult) => void) =>
@@ -47,6 +53,10 @@ vi.mock('@/lib/supabase/server', () => ({
       from: mockFrom,
     })
   ),
+}))
+
+vi.mock('@/lib/db/chat-cleanup', () => ({
+  cleanupStaleTemporarySessions: vi.fn().mockResolvedValue(new Set()),
 }))
 
 // --- Helpers ---------------------------------------------------------------
@@ -104,7 +114,9 @@ describe('getSessions', () => {
     await getSessions()
 
     expect(mockFrom).toHaveBeenCalledWith('chat_sessions')
-    expect(queryBuilder.select).toHaveBeenCalledWith('id, user_id, title, updated_at')
+    expect(queryBuilder.select).toHaveBeenCalledWith(
+      'id, user_id, title, active_routine_id, current_step_index, active_agent_id, updated_at'
+    )
     expect(queryBuilder.eq).toHaveBeenCalledWith('user_id', FAKE_USER.id)
     expect(queryBuilder.order).toHaveBeenCalledWith('updated_at', { ascending: false })
   })
@@ -182,11 +194,16 @@ describe('createSession', () => {
 
   it('creates session with default title "New Chat" when no input provided', async () => {
     setAuthenticatedUser()
-    setQueryResult({ id: 'session-1', title: 'New Chat' })
+    // Reuse check: first from() call returns null (no recent session to reuse)
+    const reuseBuilder = createQueryBuilder()
+    // Insert call: second from() call returns the new session
+    const insertBuilder = createQueryBuilder()
+    insertBuilder._result = { data: { id: 'session-1', title: 'New Chat' }, error: null }
+    mockFrom.mockReturnValueOnce(reuseBuilder).mockReturnValue(insertBuilder)
 
     await createSession()
 
-    expect(queryBuilder.insert).toHaveBeenCalledWith({
+    expect(insertBuilder.insert).toHaveBeenCalledWith({
       user_id: FAKE_USER.id,
       title: 'New Chat',
     })
@@ -207,16 +224,24 @@ describe('createSession', () => {
 
   it('calls .single() to return the created session', async () => {
     setAuthenticatedUser()
-    setQueryResult({ id: 'session-1', title: 'New Chat' })
+    // Reuse check returns null; insert returns session
+    const reuseBuilder = createQueryBuilder()
+    const insertBuilder = createQueryBuilder()
+    insertBuilder._result = { data: { id: 'session-1', title: 'New Chat' }, error: null }
+    mockFrom.mockReturnValueOnce(reuseBuilder).mockReturnValue(insertBuilder)
 
     await createSession()
 
-    expect(queryBuilder.single).toHaveBeenCalled()
+    expect(insertBuilder.single).toHaveBeenCalled()
   })
 
   it('propagates Supabase errors with descriptive message', async () => {
     setAuthenticatedUser()
-    setQueryResult(null, { message: 'duplicate key' })
+    // Reuse check returns null; insert returns error
+    const reuseBuilder = createQueryBuilder()
+    const insertBuilder = createQueryBuilder()
+    insertBuilder._result = { data: null, error: { message: 'duplicate key' } }
+    mockFrom.mockReturnValueOnce(reuseBuilder).mockReturnValue(insertBuilder)
 
     await expect(createSession()).rejects.toThrow(
       'Failed to create session: duplicate key'
@@ -319,7 +344,8 @@ describe('getMessages', () => {
     const result = await getMessages(FAKE_SESSION_ID)
 
     expect(result).toEqual(messages)
-    expect(queryBuilder.order).toHaveBeenCalledWith('created_at', { ascending: true })
+    // Implementation fetches DESC then .reverse() for display — test verifies the actual query direction
+    expect(queryBuilder.order).toHaveBeenCalledWith('created_at', { ascending: false })
   })
 
   it('verifies session ownership before fetching messages', async () => {

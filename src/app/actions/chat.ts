@@ -23,13 +23,25 @@ export async function confirmLogAction(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(card.date)) {
       return { error: 'Invalid date format — expected YYYY-MM-DD' }
     }
+
+    // CRITICAL: The action card's date field MUST be the source of truth for when to log.
+    // This date comes from the AI's action card JSON output, which was instructed
+    // with the correct logging date in the system prompt.
+    // Validate that the date is not undefined or empty.
+    const logDateStr = card.date.trim()
+    if (!logDateStr) {
+      return { error: 'Action card date is required and cannot be empty' }
+    }
+
     // Use the actual confirmation time (wall-clock) so entries are not stuck at midnight UTC.
-    // Only use card.date for the calendar date — the time component comes from right now.
+    // Only use the action card's date for the calendar date — the time component comes from right now.
     const now = new Date()
     const nowDateStr = now.toISOString().split('T')[0]
-    const loggedAt = card.date === nowDateStr
-      ? now.toISOString()                           // today: use exact confirmation time
-      : new Date(card.date + 'T12:00:00Z').toISOString() // backdated: use noon UTC to avoid day-boundary issues
+    const loggedAt = logDateStr === nowDateStr
+      ? now.toISOString()                               // today: use exact confirmation time
+      : new Date(logDateStr + 'T12:00:00Z').toISOString() // backdated: use noon UTC to avoid day-boundary issues
+
+    console.log('[confirmLogAction] Logging to date:', logDateStr, '— loggedAt:', loggedAt, '— tracker:', card.trackerId)
 
     // Duplicate guard — only blocks re-confirming the SAME card (same messageId + cardIndex).
     // Checks if this specific message's action card is already marked confirmed in the DB.
@@ -86,10 +98,11 @@ export async function confirmLogAction(
           const rawActions = msg.actions as ActionCard[] ?? []
           // Index-based match is exact — avoids tracker+date collisions and string diff bugs.
           // Fall back to trackerId+date matching for messages that predate cardIndex.
+          // Use the validated logDateStr (not card.date directly) to ensure consistency.
           const actions = rawActions.map((a: ActionCard, i: number) => {
             const matches = cardIndex !== undefined
               ? i === cardIndex
-              : a.trackerId === card.trackerId && a.date === card.date
+              : a.trackerId === card.trackerId && a.date === logDateStr
             return matches ? { ...a, confirmed: true } : a
           })
           const { error: updateErr } = await supabase

@@ -145,6 +145,7 @@ export async function POST(req: Request): Promise<Response> {
       ? date
       : new Date().toISOString().split('T')[0]
 
+    const activeDayStatePromise = getActiveDayState(supabase)
     const [
       trackers,
       agents,
@@ -167,13 +168,22 @@ export async function POST(req: Request): Promise<Response> {
         ? detectRoutineTrigger(message)
         : Promise.resolve(null),
       // Fetch the open day session (started but not ended) — determines default logging date
-      getActiveDayState(supabase),
+      activeDayStatePromise,
     ])
+
+    // Auto-end-day when physical date advances past active session date
+    // This prevents the system from locking indefinitely to an old date
+    let finalActiveDayState = activeDayState
+    if (activeDayState && activeDayState.date < today) {
+      console.log(`[ChatRoute] Auto-closing stale day session: locked=${activeDayState.date}, physical=${today}`)
+      markDayEnded(activeDayState.date).catch(e => console.error('[DayState] auto-close markDayEnded failed:', e))
+      finalActiveDayState = null
+    }
 
     // The authoritative logging date for this request:
     // 1. If a day session is open → use that session's date (even if physical day has changed)
     // 2. Otherwise → use the client-supplied local date (or UTC fallback)
-    const loggingDate = activeDayState?.date ?? today
+    const loggingDate = finalActiveDayState?.date ?? today
 
     let activeRoutine: Routine | null = null
 
@@ -184,10 +194,10 @@ export async function POST(req: Request): Promise<Response> {
       const routine = await fetchRoutine(routineId)
       if (routine) {
         // Guard: block Start Day if a session is already open
-        if (routine.type === 'day_start' && activeDayState !== null) {
-          console.log(`[ChatRoute] Blocked Start Day — session already active for ${activeDayState.date}`)
+        if (routine.type === 'day_start' && finalActiveDayState !== null) {
+          console.log(`[ChatRoute] Blocked Start Day — session already active for ${finalActiveDayState.date}`)
           await addMessage({ session_id: session.id, role: 'user', content: message || '', attachments: attachments ?? null })
-          const blockMsg = `Start day for ${activeDayState.date} is already in progress. Please end yesterday's session first before starting a new one.`
+          const blockMsg = `Start day for ${today} already complete. End ${finalActiveDayState.date}'s session first.`
           const savedBlock = await addMessage({ session_id: session.id, role: 'assistant', content: blockMsg, actions: [] })
           return Response.json({
             message: { id: savedBlock.id, role: 'assistant' as const, content: blockMsg, actions: [] },
@@ -210,10 +220,10 @@ export async function POST(req: Request): Promise<Response> {
     } else if (routineMatchResult) {
       const routineMatch = routineMatchResult
       // Guard: block Start Day if a session is already open
-      if (routineMatch.type === 'day_start' && activeDayState !== null) {
-        console.log(`[ChatRoute] Blocked Start Day — session already active for ${activeDayState.date}`)
+      if (routineMatch.type === 'day_start' && finalActiveDayState !== null) {
+        console.log(`[ChatRoute] Blocked Start Day — session already active for ${finalActiveDayState.date}`)
         await addMessage({ session_id: session.id, role: 'user', content: message || '', attachments: attachments ?? null })
-        const blockMsg = `Start day for ${activeDayState.date} is already in progress. Please end yesterday's session first before starting a new one.`
+        const blockMsg = `Start day for ${today} already complete. End ${finalActiveDayState.date}'s session first.`
         const savedBlock = await addMessage({ session_id: session.id, role: 'assistant', content: blockMsg, actions: [] })
         return Response.json({
           message: { id: savedBlock.id, role: 'assistant' as const, content: blockMsg, actions: [] },
@@ -287,7 +297,7 @@ export async function POST(req: Request): Promise<Response> {
     // 3. Build System Prompt priority
     // daySessionActive: true when an open session exists — AI logs to loggingDate by default
     // daySessionActive: false — neutral state, AI asks user to confirm date
-    const daySessionActive = activeDayState !== null
+    const daySessionActive = finalActiveDayState !== null
     let systemPrompt: string
     if (activeRoutine) {
       console.log(`[ChatRoute] Using routine prompt: ${activeRoutine.name} (Step ${session.current_step_index + 1})`)
@@ -403,11 +413,9 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json(responseBody, { status: 200 })
   } catch (e: unknown) {
     console.error('[chat/route] CRITICAL ERROR:', e)
-    const errorMessage = e instanceof Error ? e.message : String(e)
 
     return Response.json({
-      error: errorMessage,
-      status: 500
+      error: 'Internal server error',
     }, { status: 500 })
   }
 }

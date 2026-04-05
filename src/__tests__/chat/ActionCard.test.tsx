@@ -3,6 +3,11 @@ import { render, screen, act, waitFor } from '@testing-library/react'
 import { ActionCard } from '@/components/chat/ActionCard'
 import type { ActionCard as ActionCardType } from '@/types/action-card'
 
+// lucide-react mock — only icons used by ActionCard
+vi.mock('lucide-react', () => ({
+  Pencil: ({ className }: { className?: string }) => <span data-testid="icon-pencil" className={className} />,
+}))
+
 // Mock the server action
 vi.mock('@/app/actions/chat', () => ({
   confirmLogAction: vi.fn(),
@@ -29,7 +34,7 @@ describe('ActionCard', () => {
 
   it('renders tracker name in the header', () => {
     render(<ActionCard card={MOCK_CARD} />)
-    expect(screen.getByText('Log to Daily Nutrition')).toBeInTheDocument()
+    expect(screen.getByText('Daily Nutrition')).toBeInTheDocument()
   })
 
   it('renders field values from card.fields', () => {
@@ -40,7 +45,7 @@ describe('ActionCard', () => {
 
   it('renders the date', () => {
     render(<ActionCard card={MOCK_CARD} />)
-    expect(screen.getByText('Date: 2026-03-10')).toBeInTheDocument()
+    expect(screen.getByText('2026-03-10')).toBeInTheDocument()
   })
 
   it('shows Confirm and Discard buttons in pending state', () => {
@@ -57,7 +62,7 @@ describe('ActionCard', () => {
       screen.getByTestId('action-card-confirm').click()
     })
 
-    expect(confirmLogAction).toHaveBeenCalledWith(MOCK_CARD)
+    expect(confirmLogAction).toHaveBeenCalledWith(MOCK_CARD, undefined, undefined)
   })
 
   it('shows Logged state after successful confirmation', async () => {
@@ -70,7 +75,7 @@ describe('ActionCard', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('action-card-confirmed')).toBeInTheDocument()
-      expect(screen.getByText('Logged')).toBeInTheDocument()
+      expect(screen.getByText('Logged Successfully')).toBeInTheDocument()
     })
   })
 
@@ -97,7 +102,7 @@ describe('ActionCard', () => {
     })
 
     expect(screen.getByTestId('action-card-discarded')).toBeInTheDocument()
-    expect(screen.getByText('Discarded')).toBeInTheDocument()
+    expect(screen.getByText('Log discarded')).toBeInTheDocument()
   })
 
   it('buttons are disabled during loading state', async () => {

@@ -39,13 +39,15 @@ vi.mock('@/lib/db/chat', () => ({
   createSession: mockCreateSession,
   getSession: mockGetSession,
   addMessage: mockAddMessage,
+  updateSession: vi.fn().mockResolvedValue(undefined),
   getMessages: vi.fn(),
   getSessions: vi.fn(),
-  getRecentMessagesForAI: vi.fn(),
+  getRecentMessagesForAI: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('@/lib/db/trackers', () => ({
   getTrackers: mockGetTrackers,
+  getTrackersBasic: mockGetTrackers,
 }))
 
 vi.mock('@/lib/ai/gemini', () => ({
@@ -62,6 +64,30 @@ vi.mock('@/lib/ai/prompt-builder', () => ({
 
 vi.mock('@/lib/routines/detector', () => ({
   detectRoutineTrigger: mockDetectRoutineTrigger,
+}))
+
+vi.mock('@/lib/db/day-state', () => ({
+  getActiveDayState: vi.fn().mockResolvedValue(null),
+  markDayEnded: vi.fn().mockResolvedValue(undefined),
+  markDayStarted: vi.fn().mockResolvedValue(undefined),
+  getDayState: vi.fn().mockResolvedValue(null),
+  upsertDayState: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@/lib/db/logs', () => ({
+  getLogsForDay: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('@/lib/db/routines', () => ({
+  getRoutine: vi.fn().mockResolvedValue(null),
+}))
+
+vi.mock('@/lib/ai/master-brain', () => ({
+  getMasterBrainContext: vi.fn().mockResolvedValue(''),
+}))
+
+vi.mock('@/lib/db/agents', () => ({
+  getAgents: vi.fn().mockResolvedValue([]),
 }))
 
 // ---------------------------------------------------------------------------
@@ -270,12 +296,13 @@ describe('POST /api/chat — message persistence', () => {
       session_id: FAKE_SESSION.id,
       role: 'user',
       content: 'I ate 500 calories',
+      attachments: null,
     })
 
-    // Second call: model response
+    // Second call: assistant response
     expect(mockAddMessage).toHaveBeenNthCalledWith(2, {
       session_id: FAKE_SESSION.id,
-      role: 'model',
+      role: 'assistant',
       content: 'Logged your meal!',
       actions: [],
     })
@@ -317,8 +344,8 @@ describe('POST /api/chat — response shape', () => {
     }
 
     expect(body.sessionId).toBe(FAKE_SESSION.id)
-    expect(body.message).toEqual({
-      role: 'model',
+    expect(body.message).toMatchObject({
+      role: 'assistant',
       content: 'Got it!',
       actions: [FAKE_ACTION],
     })
@@ -346,7 +373,8 @@ describe('POST /api/chat — response shape', () => {
           expect.objectContaining({ mimeType: 'image/jpeg' }),
         ],
       }),
-      expect.any(String)
+      expect.any(String),
+      expect.any(Array)
     )
   })
 })
@@ -426,11 +454,20 @@ describe('POST /api/chat — routine trigger detection', () => {
     const res = await POST(makeRequest({ message: 'start day' }))
 
     expect(res.status).toBe(200)
-    expect(mockBuildRoutineSystemPrompt).toHaveBeenCalledWith(FAKE_ROUTINE)
+    expect(mockBuildRoutineSystemPrompt).toHaveBeenCalledWith(
+      FAKE_ROUTINE,
+      expect.any(Array),
+      expect.any(Number),
+      expect.any(String),
+      expect.any(Array),
+      expect.any(String),
+      expect.any(String),
+    )
     expect(mockBuildHealthSystemPrompt).not.toHaveBeenCalled()
     expect(mockProcessHealthMessage).toHaveBeenCalledWith(
       expect.anything(),
-      'You are YAHA executing a routine.'
+      'You are YAHA executing a routine.',
+      expect.any(Array)
     )
   })
 
@@ -444,7 +481,8 @@ describe('POST /api/chat — routine trigger detection', () => {
     expect(mockBuildRoutineSystemPrompt).not.toHaveBeenCalled()
     expect(mockProcessHealthMessage).toHaveBeenCalledWith(
       expect.anything(),
-      'You are a health assistant.'
+      'You are a health assistant.',
+      expect.any(Array)
     )
   })
 

@@ -222,7 +222,7 @@ export function sanitizeFields(
       const num = Number(raw)
 
       if (Number.isNaN(num)) {
-        result[schemaDef.fieldId] = raw !== null ? String(raw) : null
+        result[schemaDef.fieldId] = null
         continue
       }
 
@@ -233,6 +233,18 @@ export function sanitizeFields(
         (schemaDef.unit === 'kg' || schemaDef.unit === 'lbs') &&
         rounded > WEIGHT_SANITY_MAX
       ) {
+        result[schemaDef.fieldId] = null
+        continue
+      }
+
+      // Convert minutes to hours for duration fields: AI sometimes outputs 480 when it means 8hrs
+      if (schemaDef.unit === 'hrs' && rounded > HOURS_MAX && rounded <= MINUTES_MAX) {
+        result[schemaDef.fieldId] = Math.round((rounded / MINUTES_TO_HOURS_DIVISOR) * DURATION_ROUND_FACTOR) / DURATION_ROUND_FACTOR
+        continue
+      }
+
+      // Reject hallucinated duration values exceeding 24 hours expressed in minutes
+      if (schemaDef.unit === 'hrs' && rounded > MINUTES_MAX) {
         result[schemaDef.fieldId] = null
         continue
       }

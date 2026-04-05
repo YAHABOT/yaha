@@ -714,7 +714,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
               </div>
             )}
 
-            <div className={`flex max-w-[82%] flex-col gap-3 lg:max-w-[68%] ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <div data-testid={message.role === 'user' ? 'message-user' : 'message-model'} className={`flex max-w-[82%] flex-col gap-3 lg:max-w-[68%] ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
               <div
                 className={`rounded-3xl px-5 py-3.5 text-sm leading-relaxed ${
                   message.role === 'user'
@@ -838,7 +838,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
 
       {/* Input — shrink-0 keeps it always visible above mobile bottom nav; no sticky needed inside flex column */}
       <div className="shrink-0 bg-card/60 backdrop-blur-xl border-t border-white/5 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] md:p-5 lg:px-12">
-        <form onSubmit={handleSubmit} className="relative mx-auto max-w-4xl">
+        <form data-testid="chat-form" onSubmit={handleSubmit} className="relative mx-auto max-w-4xl">
           {/* Image file input */}
           <input
             ref={fileInputRef}
@@ -931,6 +931,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
                   e.currentTarget.form?.requestSubmit()
                 }
               }}
+              data-testid="message-input"
               placeholder="Speak to YAHA..."
               className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none md:text-base resize-none"
             />

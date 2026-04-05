@@ -89,7 +89,7 @@ describe('buildRoutineSystemPrompt', () => {
 
   it('numbers each step sequentially starting at 1', () => {
     const result = buildRoutineSystemPrompt(FAKE_ROUTINE, [FAKE_TRACKER])
-    expect(result).toContain('CURRENT STEP: 1 of 2')
+    expect(result).toContain('ACTIVE STEP: 1 of 2')
   })
 
   it('lists target fields for each step', () => {
@@ -111,7 +111,7 @@ describe('buildRoutineSystemPrompt', () => {
       steps: [FAKE_ROUTINE.steps[0]],
     }
     const result = buildRoutineSystemPrompt(singleStepRoutine, [FAKE_TRACKER])
-    expect(result).toContain('CURRENT STEP: 1 of 1')
+    expect(result).toContain('ACTIVE STEP: 1 of 1')
   })
 
   it('handles a routine with no steps without throwing', () => {

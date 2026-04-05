@@ -5,7 +5,7 @@ import { getWidgets } from '@/lib/db/dashboard'
 import { computeWidgetValueOptimized, type CorrelationRecord } from '@/lib/db/dashboard-data'
 import { getTrackersBasic } from '@/lib/db/trackers'
 import { getRoutines } from '@/lib/db/routines'
-import { getDayState } from '@/lib/db/day-state'
+import { getActiveDayState } from '@/lib/db/day-state'
 import { DashboardClient } from '@/components/dashboard/DashboardClient'
 import type { WidgetValue } from '@/types/widget'
 import type { TrackerLog } from '@/types/log'
@@ -30,7 +30,7 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
         .order('logged_at', { ascending: false })
         .limit(200)
         .then(res => res.data || []),
-      getDayState(undefined, supabase)
+      getActiveDayState(supabase)
     ])
 
     const dayStartRoutine = routines.find(r => r.type === 'day_start') ?? null

@@ -11,6 +11,9 @@ vi.mock('lucide-react', () => ({
   ClipboardList: ({ className }: { className?: string }) => (
     <span data-testid="icon-clipboard" className={className} />
   ),
+  Activity: ({ className }: { className?: string }) => (
+    <span data-testid="icon-activity" className={className} />
+  ),
 }))
 
 // Mock next/link to render as a plain anchor
@@ -50,10 +53,11 @@ describe('TrackerCard', () => {
     expect(screen.getByText('Daily Nutrition')).toBeInTheDocument()
   })
 
-  it('renders the color dot with the correct background color', () => {
+  it('renders the color dot with the correct color', () => {
     render(<TrackerCard tracker={MOCK_TRACKER} />)
     const dot = screen.getByTestId('tracker-color-dot')
-    expect(dot).toHaveStyle({ backgroundColor: '#10b981' })
+    // Component applies tracker.color as `color` (icon color) and `${tracker.color}18` as background
+    expect(dot).toHaveStyle({ color: '#10b981' })
   })
 
   it('renders the type badge', () => {
@@ -105,7 +109,7 @@ describe('TrackerCard', () => {
     }
     render(<TrackerCard tracker={sleepTracker} />)
     const dot = screen.getByTestId('tracker-color-dot')
-    expect(dot).toHaveStyle({ backgroundColor: '#3b82f6' })
+    expect(dot).toHaveStyle({ color: '#3b82f6' })
     expect(screen.getByText('sleep')).toBeInTheDocument()
   })
 })

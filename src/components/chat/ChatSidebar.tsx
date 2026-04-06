@@ -217,7 +217,7 @@ export function ChatSidebar({ sessions, currentSessionId, onMobileClose }: Props
       </div>
 
       {/* Session list */}
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-3 scrollbar-hide" aria-label="Chat sessions">
+      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 py-3 scrollbar-hide" aria-label="Chat sessions">
         {sessions.length === 0 ? (
           <div className="flex flex-col items-center gap-4 px-4 py-16 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.02] border border-white/[0.04]">

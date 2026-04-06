@@ -215,11 +215,6 @@ export function ActionCard({ card, messageId, cardIndex, onConfirm, onDiscard, o
                 <span className="min-w-0 flex-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
                   {label}
                 </span>
-                {unit && (
-                  <span className="shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-white/[0.05] border border-white/10 text-muted-foreground/50 select-none cursor-default">
-                    {unit}
-                  </span>
-                )}
               </div>
 
               {isEditExpanded ? (
@@ -231,9 +226,18 @@ export function ActionCard({ card, messageId, cardIndex, onConfirm, onDiscard, o
                   placeholder="..."
                 />
               ) : (
-                <p className="text-sm font-bold text-foreground w-full leading-snug break-words whitespace-pre-wrap">
+                <p className="text-sm font-bold text-foreground w-full leading-snug break-words whitespace-pre-wrap flex items-baseline gap-1.5 flex-wrap">
                   {value !== null && value !== undefined && value !== ''
-                    ? String(value)
+                    ? (
+                      <>
+                        <span>{String(value)}</span>
+                        {unit && (
+                          <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground/40 select-none">
+                            {unit}
+                          </span>
+                        )}
+                      </>
+                    )
                     : <span className="text-muted-foreground/20">—</span>}
                 </p>
               )}

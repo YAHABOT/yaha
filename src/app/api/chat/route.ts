@@ -322,11 +322,42 @@ export async function POST(req: Request): Promise<Response> {
     // 3. Process message through Gemini
     const { text, actions } = await processHealthMessage(chatInput, systemPrompt, history)
 
+    // Detect whether the user's message contains an explicit date reference.
+    // If not, a stale card.date more than 30 days old will be overridden with loggingDate.
+    const EXPLICIT_DATE_PATTERNS = [
+      /\byesterday\b/i,
+      /\b(last|this)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|week|month)\b/i,
+      /\b\d{1,2}[\/\-]\d{1,2}\b/,           // e.g. 04/03 or 4-3
+      /\b\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\b/, // e.g. 2026-04-03
+      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i,
+      /\b\d+(st|nd|rd|th)\b/i,               // e.g. 3rd, 21st
+      /\b\d+\s+(day|week|month|year)s?\s+ago\b/i, // e.g. 2 months ago, 3 weeks ago
+      /\btoday\b/i,                           // e.g. log today's weight
+    ]
+    const messageHasExplicitDate = message
+      ? EXPLICIT_DATE_PATTERNS.some(pattern => pattern.test(message))
+      : false
+
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
+    const loggingDateMs = new Date(loggingDate).getTime()
+
     // Sanitize actions against tracker schema — only applies to LOG_DATA cards.
     // CREATE_TRACKER cards pass through as-is; they contain schema definition not logged fields.
     const sanitizedActions: AnyActionCard[] = actions.map(action => {
       if (action.type !== 'LOG_DATA') return action
-      const tracker = trackers.find(t => t.id === action.trackerId)
+
+      // Date sanity guard: if AI hallucinated a stale date (>30 days ago) and the user
+      // gave no explicit date reference, override with the authoritative loggingDate.
+      let actionWithDate = action
+      if (action.date && !messageHasExplicitDate) {
+        const cardDateMs = new Date(action.date).getTime()
+        if (!isNaN(cardDateMs) && (loggingDateMs - cardDateMs) > THIRTY_DAYS_MS) {
+          console.log(`[ChatRoute] Date sanity override: card.date=${action.date} → loggingDate=${loggingDate} (delta=${Math.round((loggingDateMs - cardDateMs) / 86400000)}d)`)
+          actionWithDate = { ...action, date: loggingDate }
+        }
+      }
+
+      const tracker = trackers.find(t => t.id === actionWithDate.trackerId)
       if (tracker) {
         // Enforce DB schema for labels and units - ignore Gemini's hallucinations
         const schema = tracker.schema
@@ -344,14 +375,14 @@ export async function POST(req: Request): Promise<Response> {
         })
 
         return {
-          ...action,
+          ...actionWithDate,
           fieldLabels,
           fieldUnits,
           fieldOrder,
-          fields: sanitizeFields(action.fields, schema)
+          fields: sanitizeFields(actionWithDate.fields, schema)
         }
       }
-      return action
+      return actionWithDate
     })
 
     // Detect skip intent so we do NOT attempt to log a skipped step.

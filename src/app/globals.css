@@ -48,11 +48,12 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
-    background-image: 
+    background-image:
       radial-gradient(circle at 50% -20%, #a855f715, transparent),
       radial-gradient(circle at 0% 100%, #10b98105, transparent);
     background-attachment: fixed;
     min-height: 100vh;
+    overscroll-behavior-y: contain;
   }
 }
 

@@ -37,6 +37,15 @@ export function DashboardClient({
 
   const hasWidgets = widgets.length > 0
 
+  // Derive explicit session state from dayState prop.
+  // dayState comes from getActiveDayState() which only returns rows with
+  // day_started_at IS NOT NULL AND day_ended_at IS NULL.
+  // So: dayState !== null  ⟺  ACTIVE state.
+  //     dayState === null   ⟺  NEUTRAL state (never started, or already ended).
+  // ENDED rows are never returned by getActiveDayState(), so ENDED === NEUTRAL for display.
+  const sessionIsActive = dayState !== null
+  const sessionIsNeutral = dayState === null
+
   function handleDelete(id: string): void {
     startTransition(async () => {
       await deleteWidgetAction(id)
@@ -61,11 +70,13 @@ export function DashboardClient({
 
   return (
     <div className="flex flex-col gap-5 p-4 md:p-6">
-      {/* Routine banners */}
-      {dayStartRoutine && !dayState && (
+      {/* Routine banners — driven by explicit state constants (single source of truth).
+          Start Day: show only in NEUTRAL state (no open session).
+          End Day:   show only in ACTIVE state (session open, not yet ended). */}
+      {dayStartRoutine && sessionIsNeutral && (
         <RoutineBanner routine={dayStartRoutine} type="day_start" />
       )}
-      {dayEndRoutine && dayState?.day_started_at && !dayState?.day_ended_at && (
+      {dayEndRoutine && sessionIsActive && (
         <RoutineBanner routine={dayEndRoutine} type="day_end" />
       )}
 

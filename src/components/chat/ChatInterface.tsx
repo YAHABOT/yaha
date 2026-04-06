@@ -68,10 +68,9 @@ type Props = {
   session: ChatSession | null
   initialRoutine?: Routine | null
   sessions?: ChatSession[]
-  confirmOnRefresh?: boolean
 }
 
-export function ChatInterface({ initialMessages, sessionId, session: initialSession, initialRoutine, sessions = [], confirmOnRefresh = true }: Props): React.ReactElement {
+export function ChatInterface({ initialMessages, sessionId, session: initialSession, initialRoutine, sessions = [] }: Props): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [input, setInput] = useState<string>('')
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -106,16 +105,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   // Mark hydrated after first client paint so the messages area doesn't flash unstyled
   useEffect(() => { setIsHydrated(true) }, [])
 
-  // Warn before page refresh/close when a routine is actively in progress
-  useEffect(() => {
-    if (!confirmOnRefresh || !currentRoutine || !session?.active_routine_id) return
-    const handler = (e: BeforeUnloadEvent): void => {
-      e.preventDefault()
-      e.returnValue = ''  // Required for Chrome to show the native dialog
-    }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [confirmOnRefresh, currentRoutine, session?.active_routine_id])
+  // Warn before page refresh/close is now handled globally by RefreshGuard in app layout.
 
   // FIX-4: track mount state to prevent state updates after unmount (e.g. app switch)
   const isMountedRef = useRef(true)

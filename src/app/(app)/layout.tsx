@@ -2,6 +2,8 @@ import { getSafeUser } from '@/lib/supabase/auth'
 import { redirect } from 'next/navigation'
 import { DesktopSidebar } from '@/components/nav/DesktopSidebar'
 import { MobileBottomNav } from '@/components/nav/MobileBottomNav'
+import { RefreshGuard } from '@/components/nav/RefreshGuard'
+import { getUser } from '@/lib/db/users'
 
 export default async function AppLayout({
   children,
@@ -14,8 +16,17 @@ export default async function AppLayout({
     redirect('/login')
   }
 
+  let profile = null
+  try {
+    profile = await getUser(user.id)
+  } catch {
+    // Non-fatal — RefreshGuard defaults to false if profile unavailable
+  }
+  const confirmOnRefresh = profile?.stats?.confirmOnRefresh ?? false
+
   return (
     <div className="h-dvh overflow-hidden bg-background">
+      <RefreshGuard confirmOnRefresh={confirmOnRefresh} />
       <DesktopSidebar user={{ email: user.email ?? null }} />
       <MobileBottomNav />
       {/* No padding here — (content)/layout.tsx adds padding for regular pages.

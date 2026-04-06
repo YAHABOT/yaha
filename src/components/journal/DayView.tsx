@@ -72,10 +72,13 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
   const grouped = groupLogsByTracker(logs)
   const trackersWithLogs = trackers.filter((t) => grouped.has(t.id))
 
-  // Merge today into loggedDates if not already present
-  const allDates = loggedDates.includes(today)
-    ? loggedDates
-    : [today, ...loggedDates]
+  // When the user is viewing today and today has no logs yet, inject today into
+  // the sidebar so it shows an active highlight and TODAY badge. Only inject for
+  // the currently-viewed date — other logless dates never get phantom entries.
+  const allDates =
+    date === today && !loggedDates.includes(today)
+      ? [today, ...loggedDates]
+      : loggedDates
 
   function goTo(d: string) {
     router.push(`/journal?date=${d}`)
@@ -144,7 +147,10 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
             {/* Drawer header: action buttons + close */}
             <div className="flex items-center justify-between border-b border-white/[0.04] px-3 py-3">
               <div className="flex items-center gap-2">
-                <button className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-textMuted transition-all duration-300 hover:bg-white/[0.05] hover:text-textPrimary">
+                <button
+                  onClick={() => { router.push('/journal/correlations'); setMobileSidebarOpen(false) }}
+                  className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-textMuted transition-all duration-300 hover:bg-white/[0.05] hover:text-textPrimary"
+                >
                   <Eye className="h-3 w-3" />
                   View
                 </button>
@@ -153,7 +159,7 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
                   className="flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-all duration-300 hover:bg-primary/20"
                 >
                   <GitBranch className="h-3 w-3" />
-                  Cor.
+                  Correlate
                 </button>
               </div>
               <button
@@ -210,7 +216,10 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
 
           {/* Desktop-only action buttons — hidden on mobile (moved to drawer) */}
           <div className="hidden md:flex items-center gap-2">
-            <button className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-textMuted backdrop-blur-md transition-all duration-300 hover:bg-white/[0.05] hover:text-textPrimary">
+            <button
+              onClick={() => router.push('/journal/correlations')}
+              className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-textMuted backdrop-blur-md transition-all duration-300 hover:bg-white/[0.05] hover:text-textPrimary"
+            >
               <Eye className="h-3 w-3" />
               View
             </button>

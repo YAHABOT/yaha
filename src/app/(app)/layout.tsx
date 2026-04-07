@@ -25,7 +25,7 @@ export default async function AppLayout({
   const confirmOnRefresh = profile?.stats?.confirmOnRefresh ?? false
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-background">
+    <div className="h-dvh overflow-hidden bg-background">
       <RefreshGuard confirmOnRefresh={confirmOnRefresh} />
       <DesktopSidebar user={{ email: user.email ?? null }} />
       <MobileBottomNav />

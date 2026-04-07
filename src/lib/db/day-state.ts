@@ -89,6 +89,27 @@ export async function markDayStarted(date: string): Promise<void> {
 }
 
 /**
+ * Skip Start Day — marks a new session as started without running routine steps.
+ * Equivalent to Start Day completion but bypasses the chat routine flow.
+ * date: the client's local YYYY-MM-DD.
+ */
+export async function skipStartDay(date: string): Promise<void> {
+  // Reuse markDayStarted — identical semantics: opens a session for the given date
+  // and closes any other open sessions (prevents multiple active sessions).
+  await markDayStarted(date)
+}
+
+/**
+ * Skip End Day — marks the currently open session as ended without running routine steps.
+ * Equivalent to End Day completion but bypasses the chat routine flow.
+ * activeDate: the date of the currently open session.
+ */
+export async function skipEndDay(activeDate: string): Promise<void> {
+  // Reuse markDayEnded — identical semantics: closes the session for the given date.
+  await markDayEnded(activeDate)
+}
+
+/**
  * Called when the End Day routine completes.
  * Closes the currently open session (started but not ended) rather than
  * assuming it's today's UTC date — which would break for UTC+ users

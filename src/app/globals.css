@@ -45,6 +45,11 @@
   * {
     @apply border-border;
   }
+  html {
+    overflow: hidden;
+    overscroll-behavior: none;
+    height: 100%;
+  }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
@@ -53,7 +58,7 @@
       radial-gradient(circle at 0% 100%, #10b98105, transparent);
     background-attachment: fixed;
     min-height: 100vh;
-    overscroll-behavior-y: contain;
+    overscroll-behavior: none;
   }
 }
 

@@ -91,7 +91,7 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
         <p className="text-[10px] font-black uppercase tracking-widest text-textMuted">Log Days</p>
         <p className="mt-0.5 text-xs text-textMuted">{loggedDates.length} days</p>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overscroll-y-none">
         {allDates.map((d) => {
           const { day, date: dateNum, label } = formatSidebarDate(d)
           const isActive = d === date
@@ -177,7 +177,7 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
       )}
 
       {/* ── Left Sidebar: Date List (desktop only) ── */}
-      <aside className="hidden w-44 flex-shrink-0 overflow-y-auto border-r border-white/5 bg-surface md:flex md:flex-col">
+      <aside className="hidden w-44 flex-shrink-0 overflow-y-auto overscroll-y-none border-r border-white/5 bg-surface md:flex md:flex-col">
         {dateList}
       </aside>
 
@@ -234,7 +234,7 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="flex-1 overflow-y-auto overscroll-y-none px-4 py-6">
           {/* Correlations row */}
           {correlations.length > 0 && (
             <div className="mb-8">

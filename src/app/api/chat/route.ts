@@ -171,14 +171,9 @@ export async function POST(req: Request): Promise<Response> {
       activeDayStatePromise,
     ])
 
-    // Auto-end-day when physical date advances past active session date
-    // This prevents the system from locking indefinitely to an old date
-    let finalActiveDayState = activeDayState
-    if (activeDayState && activeDayState.date < today) {
-      console.log(`[ChatRoute] Auto-closing stale day session: locked=${activeDayState.date}, physical=${today}`)
-      markDayEnded(activeDayState.date).catch(e => console.error('[DayState] auto-close markDayEnded failed:', e))
-      finalActiveDayState = null
-    }
+    // Sessions stay ACTIVE until the user explicitly ends or skips — NEVER auto-close based on clock.
+    // Cross-day continuity is intentional: the active session's date is the authoritative logging date.
+    const finalActiveDayState = activeDayState
 
     // The authoritative logging date for this request:
     // 1. If a day session is open → use that session's date (even if physical day has changed)

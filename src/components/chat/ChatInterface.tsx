@@ -666,7 +666,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
 
       {/* Messages — min-h-0 is critical: without it a flex child won't shrink below content height,
            causing the whole page to scroll instead of just this element */}
-      <div className={`min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-10 space-y-6 lg:px-12 ${!isHydrated ? 'invisible' : ''}`}>
+      <div className={`min-h-0 flex-1 overflow-y-auto overscroll-y-none px-4 py-10 space-y-6 lg:px-12 ${!isHydrated ? 'invisible' : ''}`}>
         {error && (
           <div className="mb-6 flex items-center justify-between rounded-2xl bg-red-500/[0.08] border border-red-500/20 px-4 py-3 text-sm text-red-300 animate-in slide-in-from-top-2 backdrop-blur-sm">
             <div className="flex items-center gap-3">

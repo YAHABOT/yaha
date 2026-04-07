@@ -522,7 +522,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   const activeAgent = agents.find(a => a.id === activeAgentId)
 
   return (
-    <div className="relative flex flex-1 min-h-0 flex-col overflow-hidden bg-background text-foreground">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
       {/* BUG 3: Mobile sidebar overlay */}
       {isMobileSidebarOpen && (
         // Outer div handles close-on-backdrop-click. pointer-events-none on the visual

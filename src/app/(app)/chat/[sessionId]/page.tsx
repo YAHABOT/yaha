@@ -22,7 +22,7 @@ export default async function ChatSessionPage({ params, searchParams }: Props): 
     ])
 
     return (
-      <div className="flex min-h-0 overflow-hidden">
+      <div className="flex h-full min-h-0 overflow-hidden">
         <ChatSidebar sessions={sessions} />
         <div className="flex flex-1 flex-col min-h-0 overflow-hidden bg-background">
           <ChatInterface

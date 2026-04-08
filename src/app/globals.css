@@ -45,11 +45,6 @@
   * {
     @apply border-border;
   }
-  html {
-    overflow: hidden;
-    overscroll-behavior: none;
-    height: 100%;
-  }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;

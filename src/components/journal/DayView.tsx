@@ -62,11 +62,18 @@ function addDays(dateStr: string, n: number): string {
   return d.toISOString().split('T')[0]
 }
 
+// Returns YYYY-MM-DD in the user's LOCAL timezone — avoids UTC midnight boundary where
+// UTC+ users would see yesterday's date labelled TODAY until midnight UTC.
+function getLocalDateStr(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function DayView({ date, trackers, logs, loggedDates, correlations }: Props): React.ReactElement {
   const router = useRouter()
   const [correlatorOpen, setCorrelatorOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const today = new Date().toISOString().split('T')[0]
+  const today = getLocalDateStr()
   const isToday = date >= today
 
   const grouped = groupLogsByTracker(logs)
@@ -156,10 +163,10 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
                 </button>
                 <button
                   onClick={() => { setCorrelatorOpen(true); setMobileSidebarOpen(false) }}
-                  className="flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-all duration-300 hover:bg-primary/20"
+                  className="flex flex-col items-center gap-0.5 rounded-xl border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-all duration-300 hover:bg-primary/20"
                 >
                   <GitBranch className="h-3 w-3" />
-                  Correlate
+                  <span>Correlator</span>
                 </button>
               </div>
               <button

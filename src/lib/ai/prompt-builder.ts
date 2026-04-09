@@ -269,6 +269,16 @@ NEVER tell the user you cannot log, save, push, or write data.
 NEVER say "Approved and Logged" means you merely prepared a log-ready format — it means the user's confirmation triggers a real database insertion.
 `
 
+  const YES_NO_FIELD_RULE = `
+## 🟡 YES/NO (BOOLEAN) FIELD RULE — CRITICAL
+When the current step has a yes/no or boolean field and the user responds with "no" or "nope":
+- This is a DATA RESPONSE meaning the field value is false/"No" — it is NOT a skip request.
+- ALWAYS produce a LOG_DATA action card with the boolean/text field set to false or "No".
+- Do NOT treat "no" or "nope" as wanting to skip the step.
+- ONLY treat the following as explicit skip intent: "skip", "skip this", "pass", "not now", "next step".
+- Plain "no" = logging the value. "Skip" = advancing without logging.
+`
+
   // Physical current date — used for relative date arithmetic ("yesterday", "5 days ago")
   // When a day session is active, today (loggingDate) ≠ actualToday (device date)
   const actualToday = actualDate ?? today
@@ -277,6 +287,7 @@ NEVER say "Approved and Logged" means you merely prepared a log-ready format —
 Your primary directive is to guide Armaan through this sequence with zero friction and hyper-accurate data extraction.
 
 ${DB_ACCESS_BLOCK}
+${YES_NO_FIELD_RULE}
 
 Today's date: ${today}
 Actual current date: ${actualToday}

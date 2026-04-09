@@ -89,6 +89,9 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   const [saveTitle, setSaveTitle] = useState<string>('')
   const [isSaving, setIsSaving] = useState<boolean>(false)
 
+  // B8: streaming text accumulates here until the [DONE] event arrives
+  const [streamingText, setStreamingText] = useState<string>('')
+
   const [isHydrated, setIsHydrated] = useState<boolean>(false)
   const [isAttachMenuOpen, setIsAttachMenuOpen] = useState<boolean>(false)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -211,19 +214,59 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         signal: abortControllerRef.current?.signal
       })
       if (!res.ok) return
-      const data = await res.json()
+
+      // Handle SSE streaming response for silent send
+      const contentType = res.headers.get('content-type') ?? ''
+      let finalSessionId = currentSessionId
+      let finalMessageId: string | null = null
+      let finalContent = ''
+      let finalActions: unknown[] = []
+
+      if (contentType.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            try {
+              const event = JSON.parse(line.slice(6)) as { type: string; messageId?: string; sessionId?: string; content?: string; actions?: unknown[] }
+              if (event.type === 'done' && event.messageId) {
+                finalMessageId = event.messageId
+                finalSessionId = event.sessionId ?? currentSessionId
+                finalContent = event.content ?? ''
+                finalActions = event.actions ?? []
+              }
+            } catch { /* ignore parse errors */ }
+          }
+        }
+      } else {
+        const data = await res.json()
+        finalMessageId = data.message?.id ?? `mod-${Date.now()}`
+        finalSessionId = data.sessionId
+        finalContent = data.message?.content ?? ''
+        finalActions = data.message?.actions ?? []
+      }
+
       if (!isMountedRef.current) return
-      setMessages((prev) => [...prev, {
-        id: data.message?.id ?? `mod-${Date.now()}`,
-        session_id: data.sessionId,
-        role: 'assistant',
-        content: data.message.content,
-        actions: data.message.actions,
-        created_at: new Date().toISOString()
-      }])
+      if (finalMessageId) {
+        setMessages((prev) => [...prev, {
+          id: finalMessageId!,
+          session_id: finalSessionId,
+          role: 'assistant' as const,
+          content: finalContent,
+          actions: finalActions as ChatMessage['actions'],
+          created_at: new Date().toISOString()
+        }])
+      }
 
       // Refresh session state so the routine step badge reflects the newly advanced step
-      const sessRes = await fetch(`/api/chat/sessions/${data.sessionId}`)
+      const sessRes = await fetch(`/api/chat/sessions/${finalSessionId}`)
       if (sessRes.ok) {
         const nextSession = await sessRes.json()
         if (!isMountedRef.current) return
@@ -273,6 +316,9 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
     const controller = new AbortController()
     abortControllerRef.current = controller
 
+    // Reset streaming state for new request
+    setStreamingText('')
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -290,44 +336,98 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         }
         throw new Error(errorMessage)
       }
-      const data = await res.json()
 
-      if (!isMountedRef.current) return
-      const newMsgId = data.message?.id ?? `mod-${Date.now()}`
-      setMessages((prev) => {
-        // FIX-4: deduplicate — skip if message with this id already exists
-        if (prev.some(m => m.id === newMsgId)) return prev
-        return [...prev, {
-          // Use the real DB-assigned UUID so ActionCard can pass it to confirmLogAction
-          // and persist confirmed:true onto the correct chat_messages row.
-          id: newMsgId,
-          session_id: data.sessionId,
-          role: 'assistant',
-          content: data.message.content,
-          actions: data.message.actions,
-          created_at: new Date().toISOString()
-        }]
-      })
+      // B8: Handle SSE streaming response — text tokens arrive incrementally
+      const contentType = res.headers.get('content-type') ?? ''
+      if (contentType.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
 
-      // Track the real session UUID in state for subsequent API calls.
-      // Do NOT update the URL — Next.js 15 intercepts window.history.replaceState
-      // and triggers a full page remount when the path segment changes.
-      // The URL stays as /chat/new for the lifetime of this unsaved chat.
-      if (data.sessionId !== currentSessionId) {
-        setCurrentSessionId(data.sessionId)
-      }
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
 
-      // Persist the real session ID for active routine so page refresh can redirect
-      // to /chat/[sessionId] instead of re-triggering the routine from step 0.
-      if (routineId && data.sessionId) {
-        sessionStorage.setItem(`yaha_trigger_session_${routineId}`, data.sessionId)
+          // Parse complete SSE lines
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? '' // keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const payload = line.slice(6)
+            try {
+              const event = JSON.parse(payload) as { type: string; text?: string; messageId?: string; sessionId?: string; actions?: unknown[]; content?: string; error?: string }
+
+              if (event.type === 'chunk' && event.text) {
+                // Append chunk to streaming display state
+                setStreamingText(prev => prev + event.text)
+              } else if (event.type === 'done' && event.messageId) {
+                if (!isMountedRef.current) return
+                const newMsgId = event.messageId
+                const finalSessionId = event.sessionId ?? currentSessionId
+                // Replace streaming placeholder with final persisted message
+                setStreamingText('')
+                setMessages((prev) => {
+                  if (prev.some(m => m.id === newMsgId)) return prev
+                  return [...prev, {
+                    id: newMsgId,
+                    session_id: finalSessionId,
+                    role: 'assistant' as const,
+                    content: event.content ?? '',
+                    actions: (event.actions ?? null) as ChatMessage['actions'],
+                    created_at: new Date().toISOString()
+                  }]
+                })
+                if (finalSessionId !== currentSessionId) {
+                  setCurrentSessionId(finalSessionId)
+                }
+                if (routineId && finalSessionId) {
+                  sessionStorage.setItem(`yaha_trigger_session_${routineId}`, finalSessionId)
+                }
+              } else if (event.type === 'error') {
+                throw new Error(event.error ?? 'Streaming error')
+              }
+            } catch (parseErr) {
+              // Ignore malformed SSE lines
+              if (parseErr instanceof SyntaxError) continue
+              throw parseErr
+            }
+          }
+        }
+      } else {
+        // Fallback: legacy JSON response
+        const data = await res.json()
+        if (!isMountedRef.current) return
+        const newMsgId = data.message?.id ?? `mod-${Date.now()}`
+        setMessages((prev) => {
+          if (prev.some(m => m.id === newMsgId)) return prev
+          return [...prev, {
+            id: newMsgId,
+            session_id: data.sessionId,
+            role: 'assistant' as const,
+            content: data.message.content,
+            actions: data.message.actions,
+            created_at: new Date().toISOString()
+          }]
+        })
+        if (data.sessionId !== currentSessionId) {
+          setCurrentSessionId(data.sessionId)
+        }
+        if (routineId && data.sessionId) {
+          sessionStorage.setItem(`yaha_trigger_session_${routineId}`, data.sessionId)
+        }
       }
     } catch (e: unknown) {
       if (e instanceof DOMException && e.name === 'AbortError') return // navigated away
       if (!isMountedRef.current) return
+      setStreamingText('')
       setError(e instanceof Error ? e.message : String(e))
     } finally {
-      if (isMountedRef.current) setIsLoading(false)
+      if (isMountedRef.current) {
+        setStreamingText('')
+        setIsLoading(false)
+      }
     }
   }
 
@@ -797,15 +897,23 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         ))}
 
         {isLoading && (
-          <div className="flex items-center gap-3 ml-2 animate-in fade-in duration-300">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white/[0.04] border border-white/5">
+          <div className="flex items-start gap-3 ml-2 animate-in fade-in duration-300">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-white/[0.04] border border-white/5 mt-1">
               <Bot className="h-3.5 w-3.5 text-muted-foreground/60" />
             </div>
-            <div className="flex items-center gap-1.5 rounded-3xl rounded-bl-lg bg-white/[0.03] border border-white/[0.06] px-5 py-3.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-nutrition/60 animate-bounce [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-nutrition/60 animate-bounce [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-nutrition/60 animate-bounce [animation-delay:300ms]" />
-            </div>
+            {streamingText ? (
+              // B8: render partial streaming text as it arrives
+              <div className="rounded-3xl rounded-bl-lg bg-white/[0.03] border border-white/[0.06] px-5 py-3.5 max-w-[85%]">
+                <p className="text-sm leading-relaxed text-textPrimary whitespace-pre-wrap">{streamingText}</p>
+                <span className="inline-block h-3 w-0.5 bg-nutrition/60 animate-pulse ml-0.5 align-bottom" />
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 rounded-3xl rounded-bl-lg bg-white/[0.03] border border-white/[0.06] px-5 py-3.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-nutrition/60 animate-bounce [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-nutrition/60 animate-bounce [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-nutrition/60 animate-bounce [animation-delay:300ms]" />
+              </div>
+            )}
           </div>
         )}
 

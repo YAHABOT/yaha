@@ -2,7 +2,7 @@
 // needed for edit mode toggle state + add widget modal state + skip actions
 
 import { useState, useTransition } from 'react'
-import { Plus, Pencil, Check, RotateCcw, FlaskConical, Lock } from 'lucide-react'
+import { Plus, Pencil, Check, RotateCcw, FlaskConical } from 'lucide-react'
 import { RoutineBanner } from '@/components/dashboard/RoutineBanner'
 import { WidgetCard } from '@/components/dashboard/WidgetCard'
 import { AddWidgetModal } from '@/components/dashboard/AddWidgetModal'
@@ -97,27 +97,7 @@ export function DashboardClient({
 
   return (
     <div className="flex flex-col gap-5 p-4 md:p-6">
-      {/* Cross-day locked banner: ACTIVE session is for a past date — block new starts */}
-      {sessionIsForPastDate && dayState && (
-        <div className="flex items-center gap-3 rounded-2xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
-          <Lock className="h-4 w-4 shrink-0 text-yellow-400" />
-          <p className="flex-1 text-[11px] font-bold text-yellow-300">
-            Complete {dayState.date}&apos;s session first before starting a new day.
-          </p>
-          {dayEndRoutine && (
-            <button
-              type="button"
-              onClick={handleSkipEndDay}
-              disabled={isPending}
-              className="shrink-0 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-yellow-400 transition-all hover:border-yellow-500/50 hover:bg-yellow-500/20 disabled:opacity-40"
-            >
-              Skip End Day
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Start Day row: [Start Day banner] [Skip button] — only in NEUTRAL state (no cross-day lock needed) */}
+      {/* Start Day row: [Start Day banner] [Skip button] — only in NEUTRAL state */}
       {dayStartRoutine && sessionIsNeutral && (
         <div className="flex flex-col gap-2">
           <RoutineBanner routine={dayStartRoutine} type="day_start" />
@@ -132,8 +112,10 @@ export function DashboardClient({
         </div>
       )}
 
-      {/* End Day row: [End Day banner] [Skip button] — only in ACTIVE state AND time >= 19:00 (or past date) */}
-      {dayEndRoutine && sessionIsActive && !sessionIsForPastDate && endDayTimeGatePassed && (
+      {/* End Day row: [End Day banner] [Skip button] — shown in ACTIVE state when time >= 19:00 OR session is for a past date.
+          The cross-day locked banner has been REMOVED from Dashboard — the chat route blocks starting
+          a new day and returns the appropriate error message instead. */}
+      {dayEndRoutine && sessionIsActive && endDayTimeGatePassed && (
         <div className="flex flex-col gap-2">
           <RoutineBanner routine={dayEndRoutine} type="day_end" />
           <button

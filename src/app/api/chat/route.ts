@@ -3,8 +3,8 @@ import { createSession, getSession, addMessage, updateSession, getRecentMessages
 import { getTrackersBasic } from '@/lib/db/trackers'
 import { getLogsForDay } from '@/lib/db/logs'
 import { getRoutine as fetchRoutine } from '@/lib/db/routines'
-import { processHealthMessage } from '@/lib/ai/gemini'
-import { sanitizeFields } from '@/lib/ai/actions'
+import { streamHealthMessage } from '@/lib/ai/gemini'
+import { sanitizeFields, parseActionCards } from '@/lib/ai/actions'
 import { buildHealthSystemPrompt, buildRoutineSystemPrompt } from '@/lib/ai/prompt-builder'
 import { detectRoutineTrigger } from '@/lib/routines/detector'
 import { markDayStarted, markDayEnded, getActiveDayState } from '@/lib/db/day-state'
@@ -192,7 +192,7 @@ export async function POST(req: Request): Promise<Response> {
         if (routine.type === 'day_start' && finalActiveDayState !== null) {
           console.log(`[ChatRoute] Blocked Start Day — session already active for ${finalActiveDayState.date}`)
           await addMessage({ session_id: session.id, role: 'user', content: message || '', attachments: attachments ?? null })
-          const blockMsg = `Start day for ${today} already complete. End ${finalActiveDayState.date}'s session first.`
+          const blockMsg = `Session for ${finalActiveDayState.date} is still active. Complete your End Day routine before starting ${today}. Head to the Dashboard or type your End Day trigger phrase.`
           const savedBlock = await addMessage({ session_id: session.id, role: 'assistant', content: blockMsg, actions: [] })
           return Response.json({
             message: { id: savedBlock.id, role: 'assistant' as const, content: blockMsg, actions: [] },
@@ -314,9 +314,6 @@ export async function POST(req: Request): Promise<Response> {
       date,
     }
 
-    // 3. Process message through Gemini
-    const { text, actions } = await processHealthMessage(chatInput, systemPrompt, history)
-
     // Detect whether the user's message contains an explicit date reference.
     // If not, a stale card.date more than 30 days old will be overridden with loggingDate.
     const EXPLICIT_DATE_PATTERNS = [
@@ -336,107 +333,127 @@ export async function POST(req: Request): Promise<Response> {
     const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
     const loggingDateMs = new Date(loggingDate).getTime()
 
-    // Sanitize actions against tracker schema — only applies to LOG_DATA cards.
-    // CREATE_TRACKER cards pass through as-is; they contain schema definition not logged fields.
-    const sanitizedActions: AnyActionCard[] = actions.map(action => {
-      if (action.type !== 'LOG_DATA') return action
+    // Helper: sanitize raw action cards extracted from Gemini output
+    function buildSanitizedActions(rawActions: AnyActionCard[]): AnyActionCard[] {
+      return rawActions.map(action => {
+        if (action.type !== 'LOG_DATA') return action
 
-      // Date sanity guard: if AI hallucinated a stale date (>30 days ago) and the user
-      // gave no explicit date reference, override with the authoritative loggingDate.
-      let actionWithDate = action
-      if (action.date && !messageHasExplicitDate) {
-        const cardDateMs = new Date(action.date).getTime()
-        if (!isNaN(cardDateMs) && (loggingDateMs - cardDateMs) > THIRTY_DAYS_MS) {
-          console.log(`[ChatRoute] Date sanity override: card.date=${action.date} → loggingDate=${loggingDate} (delta=${Math.round((loggingDateMs - cardDateMs) / 86400000)}d)`)
-          actionWithDate = { ...action, date: loggingDate }
+        let actionWithDate = action
+        if (action.date && !messageHasExplicitDate) {
+          const cardDateMs = new Date(action.date).getTime()
+          if (!isNaN(cardDateMs) && (loggingDateMs - cardDateMs) > THIRTY_DAYS_MS) {
+            console.log(`[ChatRoute] Date sanity override: card.date=${action.date} → loggingDate=${loggingDate}`)
+            actionWithDate = { ...action, date: loggingDate }
+          }
         }
-      }
 
-      const tracker = trackers.find(t => t.id === actionWithDate.trackerId)
-      if (tracker) {
-        // Enforce DB schema for labels and units - ignore Gemini's hallucinations
-        const schema = tracker.schema
-        const fieldLabels: Record<string, string> = {}
-        const fieldUnits: Record<string, string> = {}
-
-        // fieldOrder is an array — arrays preserve order in JSONB unlike object keys
-        const fieldOrder: string[] = []
-        schema.forEach(f => {
-          fieldLabels[f.fieldId] = f.label
-          fieldOrder.push(f.fieldId)
-          if (f.unit) fieldUnits[f.fieldId] = f.unit
-          // Handle 'time' type as 'hrs' unit if not specified, for the formatter
-          if (f.type === 'time' && !f.unit) fieldUnits[f.fieldId] = 'hrs'
-        })
-
-        return {
-          ...actionWithDate,
-          fieldLabels,
-          fieldUnits,
-          fieldOrder,
-          fields: sanitizeFields(actionWithDate.fields, schema)
+        const tracker = trackers.find(t => t.id === actionWithDate.trackerId)
+        if (tracker) {
+          const schema = tracker.schema
+          const fieldLabels: Record<string, string> = {}
+          const fieldUnits: Record<string, string> = {}
+          const fieldOrder: string[] = []
+          schema.forEach(f => {
+            fieldLabels[f.fieldId] = f.label
+            fieldOrder.push(f.fieldId)
+            if (f.unit) fieldUnits[f.fieldId] = f.unit
+            if (f.type === 'time' && !f.unit) fieldUnits[f.fieldId] = 'hrs'
+          })
+          return {
+            ...actionWithDate,
+            fieldLabels,
+            fieldUnits,
+            fieldOrder,
+            fields: sanitizeFields(actionWithDate.fields, schema)
+          }
         }
-      }
-      return actionWithDate
-    })
+        return actionWithDate
+      })
+    }
 
     // Detect skip intent so we do NOT attempt to log a skipped step.
-    // A skip advances the step counter without writing to tracker_logs.
-    const SKIP_KEYWORDS = ['skip', 'pass', 'next step', 'skip this', 'skip that']
+    // IMPORTANT: "no" / "nope" alone must NOT be treated as skip — they are valid
+    // boolean field values (the user is logging false for a yes/no field).
+    // Only explicit skip phrasing advances without logging.
+    const SKIP_KEYWORDS = ['skip', 'pass', 'next step', 'skip this', 'skip that', 'not now']
     const isSkipIntent = message
-      ? SKIP_KEYWORDS.some(kw => message.toLowerCase().includes(kw))
+      ? SKIP_KEYWORDS.some(kw => message.toLowerCase().trim() === kw || message.toLowerCase().includes(kw + ' ') || message.toLowerCase().endsWith(' ' + kw))
       : false
 
-    // 4. Advance Routine Step?
-    // If the model produced actions for the tracker in the current step, advance.
-    if (activeRoutine) {
-      const currentStep = activeRoutine.steps[session.current_step_index]
-      // On skip, advance without logging. Otherwise check if a LOG_DATA action was produced.
-      const hasLoggedCurrentStep = isSkipIntent
-        ? true
-        : sanitizedActions.some(a => a.type === 'LOG_DATA' && a.trackerId === currentStep.trackerId)
-      
-      if (hasLoggedCurrentStep) {
-        const nextStepIndex = session.current_step_index + 1
-        if (nextStepIndex >= activeRoutine.steps.length) {
-          // Finished routine — mark day state accordingly
-          await updateSession(session.id, { 
-            active_routine_id: null,
-            current_step_index: 0 
-          })
-          // End Day completion: close the active session by its own locked date
-          if (activeRoutine.type === 'day_end') {
-            markDayEnded(loggingDate).catch(e => console.error('[DayState] markDayEnded failed:', e))
+    // 3. Stream Gemini response back to the client via SSE.
+    // Text tokens are forwarded immediately as they arrive (B8 fix — eliminates first-token lag).
+    // The full text is accumulated server-side so action cards can be parsed from the complete output.
+    // Final SSE event carries sessionId, messageId, and sanitized actions.
+    const encoder = new TextEncoder()
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        let fullText = ''
+
+        try {
+          for await (const chunk of streamHealthMessage(chatInput, systemPrompt, history)) {
+            fullText += chunk
+            // Forward raw text chunk to the client
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`))
           }
-          // Note: Start Day is handled at TRIGGER time (above), not at completion
-        } else {
-          // Move to next
-          await updateSession(session.id, { 
-            current_step_index: nextStepIndex 
+
+          // Full response received — parse actions and persist to DB
+          const rawActions = parseActionCards(fullText)
+          const sanitizedActions = buildSanitizedActions(rawActions)
+
+          // 4. Advance Routine Step?
+          if (activeRoutine) {
+            const currentStep = activeRoutine.steps[session.current_step_index]
+            const hasLoggedCurrentStep = isSkipIntent
+              ? true
+              : sanitizedActions.some(a => a.type === 'LOG_DATA' && a.trackerId === currentStep.trackerId)
+
+            if (hasLoggedCurrentStep) {
+              const nextStepIndex = session.current_step_index + 1
+              if (nextStepIndex >= activeRoutine.steps.length) {
+                await updateSession(session.id, { active_routine_id: null, current_step_index: 0 })
+                if (activeRoutine.type === 'day_end') {
+                  markDayEnded(loggingDate).catch(e => console.error('[DayState] markDayEnded failed:', e))
+                }
+              } else {
+                await updateSession(session.id, { current_step_index: nextStepIndex })
+              }
+            }
+          }
+
+          // Save model response — capture the returned row to get the real DB UUID
+          const assistantMessage = await addMessage({
+            session_id: session.id,
+            role: 'assistant',
+            content: fullText,
+            actions: sanitizedActions,
           })
+
+          // Send terminal metadata event
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: 'done',
+            messageId: assistantMessage.id,
+            sessionId: session.id,
+            actions: sanitizedActions,
+            content: fullText,
+          })}\n\n`))
+        } catch (err) {
+          console.error('[ChatRoute] Streaming error:', err)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', error: 'Streaming failed' })}\n\n`))
+        } finally {
+          controller.close()
         }
       }
-    }
-
-    // Save model response — capture the returned row to get the real DB UUID
-    const assistantMessage = await addMessage({
-      session_id: session.id,
-      role: 'assistant',
-      content: text,
-      actions: sanitizedActions,
     })
 
-    const responseBody: ChatResponse = {
-      message: {
-        id: assistantMessage.id,  // Real UUID — lets ChatInterface pass it to ActionCard for persistence
-        role: 'assistant',
-        content: text,
-        actions: sanitizedActions,
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
       },
-      sessionId: session.id,
-    }
-
-    return Response.json(responseBody, { status: 200 })
+    })
   } catch (e: unknown) {
     console.error('[chat/route] CRITICAL ERROR:', e)
 

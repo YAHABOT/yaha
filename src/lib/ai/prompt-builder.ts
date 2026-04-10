@@ -7,6 +7,12 @@ type DayLog = {
   tracker_id: string
 }
 
+type HistoricalLog = {
+  tracker_name: string
+  fields: Record<string, unknown>
+  logged_at: string
+}
+
 type BuildHealthSystemPromptParams = {
   trackers: Tracker[]
   /** The active logging date — either the open day session's date, or the client's local today */
@@ -17,6 +23,8 @@ type BuildHealthSystemPromptParams = {
   dayLogs?: DayLog[]
   /** true = an open day session exists; all logs default to `date`. false = neutral state, ask user. */
   daySessionActive?: boolean
+  /** Historical logs fetched for date-range or text-search queries — injected as HISTORICAL DATA section */
+  historicalContext?: HistoricalLog[]
 }
 
 function formatTrackerSchema(tracker: Tracker): string {
@@ -45,15 +53,63 @@ function buildTrackerSection(trackers: Tracker[]): string {
     .join('\n\n')
 }
 
-function buildDaySummary(logs?: DayLog[]): string {
+function buildDaySummary(logs?: DayLog[], trackers?: Tracker[]): string {
   if (!logs || logs.length === 0) return 'No entries logged yet for today.'
-  
+
+  const trackerMap = new Map((trackers ?? []).map(t => [t.id, t.name]))
+
   return logs.map(l => {
+    const trackerName = trackerMap.get(l.tracker_id) ?? l.tracker_id
     const fields = Object.entries(l.fields || {})
       .map(([k, v]) => `${k}: ${v}`)
       .join(', ')
-    return `- [${l.logged_at.split('T')[1].slice(0, 5)}] Tracker ${l.tracker_id}: ${fields}`
+    const time = l.logged_at.includes('T') ? l.logged_at.split('T')[1].slice(0, 5) : '??:??'
+    return `- [${time}] ${trackerName} — ${fields}`
   }).join('\n')
+}
+
+const MAX_HISTORICAL_TOKENS = 800
+const CHARS_PER_TOKEN = 4
+
+function buildHistoricalSection(logs: HistoricalLog[]): string {
+  if (logs.length === 0) {
+    return '## HISTORICAL DATA\nNo logs found for the requested period.'
+  }
+
+  // Group by date
+  const byDate = new Map<string, HistoricalLog[]>()
+  for (const log of logs) {
+    const date = log.logged_at.split('T')[0]
+    const existing = byDate.get(date) ?? []
+    existing.push(log)
+    byDate.set(date, existing)
+  }
+
+  const sortedDates = Array.from(byDate.keys()).sort().reverse()
+  const lines: string[] = ['## HISTORICAL DATA']
+  let charCount = lines[0].length
+
+  const budget = MAX_HISTORICAL_TOKENS * CHARS_PER_TOKEN
+
+  for (const date of sortedDates) {
+    const dateHeader = `### ${date}`
+    charCount += dateHeader.length
+    if (charCount > budget) break
+    lines.push(dateHeader)
+
+    for (const log of byDate.get(date) ?? []) {
+      const time = log.logged_at.includes('T') ? log.logged_at.split('T')[1].slice(0, 5) : '??:??'
+      const fields = Object.entries(log.fields || {})
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(', ')
+      const entry = `[${date} ${time}] ${log.tracker_name} — ${fields}`
+      charCount += entry.length
+      if (charCount > budget) break
+      lines.push(entry)
+    }
+  }
+
+  return lines.join('\n')
 }
 
 const MULTI_FIELD_PROMPT_RULE = `
@@ -150,7 +206,10 @@ export function buildHealthSystemPrompt(params: BuildHealthSystemPromptParams): 
   const daySessionActive = params.daySessionActive ?? false
   const trackerSection = buildTrackerSection(params.trackers)
   const masterBrain = params.userContext ? `${params.userContext}\n---\n` : ''
-  const summary = buildDaySummary(params.dayLogs)
+  const summary = buildDaySummary(params.dayLogs, params.trackers)
+  const historicalSection = params.historicalContext !== undefined
+    ? buildHistoricalSection(params.historicalContext)
+    : ''
 
   // Neutral-state date instruction: shown when no Start Day has been triggered yet,
   // or after End Day is completed. AI must ask which day to log to.
@@ -183,7 +242,7 @@ ${GLOBAL_ANTI_HALLUCINATION_RULES.replace(/{{TODAY}}/g, today).replace(/{{ACTUAL
 
 ## CURRENT DAY ACTIVITY (${today})
 ${summary}
-
+${historicalSection ? `\n${historicalSection}\n` : ''}
 ## Available Trackers
 ${trackerSection}
 
@@ -227,8 +286,8 @@ export function buildRoutineSystemPrompt(routine: Routine, trackers: Tracker[], 
   const currentStep = routine.steps[currentStepIndex]
   const nextStep = routine.steps[currentStepIndex + 1]
   const masterBrain = userContext ? `${userContext}\n---\n` : ''
-  const summary = buildDaySummary(dayLogs)
-  
+  const summary = buildDaySummary(dayLogs, trackers)
+
   const getFieldsInfo = (step: RoutineStep) => {
     const tracker = trackers.find(t => t.id === step.trackerId)
     return step.targetFields.map(fid => {

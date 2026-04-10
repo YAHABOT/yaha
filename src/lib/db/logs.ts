@@ -181,6 +181,80 @@ export async function deleteLog(id: string): Promise<void> {
   if (error) throw new Error(`Failed to delete log: ${error.message}`)
 }
 
+export type TrackerLogWithName = {
+  tracker_id: string
+  tracker_name: string
+  fields: Record<string, unknown>
+  logged_at: string
+}
+
+const HISTORICAL_LOG_LIMIT = 200
+
+export async function getLogsForDateRange(
+  startDate: string,
+  endDate: string,
+  supabaseClient: SupabaseClient,
+  trackers: Array<{ id: string; name: string }>
+): Promise<TrackerLogWithName[]> {
+  const user = await getSafeUser()
+  if (!user) throw new Error('Unauthorized')
+
+  const rangeStart = `${startDate}T00:00:00.000Z`
+  const endNext = new Date(endDate)
+  endNext.setUTCDate(endNext.getUTCDate() + 1)
+  const rangeEnd = endNext.toISOString().split('T')[0] + 'T00:00:00.000Z'
+
+  const { data, error } = await supabaseClient
+    .from('tracker_logs')
+    .select('tracker_id, fields, logged_at')
+    .gte('logged_at', rangeStart)
+    .lt('logged_at', rangeEnd)
+    .order('logged_at', { ascending: false })
+    .limit(HISTORICAL_LOG_LIMIT)
+
+  if (error) throw new Error(`Failed to fetch logs for date range: ${error.message}`)
+
+  const trackerMap = new Map(trackers.map(t => [t.id, t.name]))
+
+  return (data ?? []).map(row => ({
+    tracker_id: row.tracker_id as string,
+    tracker_name: trackerMap.get(row.tracker_id as string) ?? 'Unknown Tracker',
+    fields: row.fields as Record<string, unknown>,
+    logged_at: row.logged_at as string,
+  }))
+}
+
+export async function searchLogsByFieldText(
+  query: string,
+  supabaseClient: SupabaseClient,
+  trackers: Array<{ id: string; name: string }>,
+  limit: number = 10
+): Promise<TrackerLogWithName[]> {
+  const user = await getSafeUser()
+  if (!user) throw new Error('Unauthorized')
+
+  // Sanitize query to prevent injection via ILIKE pattern — only allow safe characters
+  const safeQuery = query.replace(/[%_\\]/g, char => `\\${char}`)
+
+  const { data, error } = await supabaseClient
+    .from('tracker_logs')
+    .select('tracker_id, fields, logged_at')
+    .ilike('fields::text', `%${safeQuery}%`)
+    .order('logged_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw new Error(`Failed to search logs by field text: ${error.message}`)
+
+  const trackerMap = new Map(trackers.map(t => [t.id, t.name]))
+
+  return (data ?? []).map(row => ({
+    tracker_id: row.tracker_id as string,
+    tracker_name: trackerMap.get(row.tracker_id as string) ?? 'Unknown Tracker',
+    fields: row.fields as Record<string, unknown>,
+    logged_at: row.logged_at as string,
+  }))
+}
+
 export type TrackerLogSummary = {
   tracker_id: string
   count: number

@@ -1,7 +1,8 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { createSession, getSession, addMessage, updateSession, getRecentMessagesForAI } from '@/lib/db/chat'
 import { getTrackersBasic } from '@/lib/db/trackers'
-import { getLogsForDay } from '@/lib/db/logs'
+import { getLogsForDay, getLogsForDateRange, searchLogsByFieldText } from '@/lib/db/logs'
+import type { TrackerLogWithName } from '@/lib/db/logs'
 import { getRoutine as fetchRoutine } from '@/lib/db/routines'
 import { streamHealthMessage } from '@/lib/ai/gemini'
 import { sanitizeFields, parseActionCards } from '@/lib/ai/actions'
@@ -289,6 +290,92 @@ export async function POST(req: Request): Promise<Response> {
       attachments: attachments ?? null,
     })
 
+    // Historical intent detection — scans message for date-range / recall patterns
+    // and fetches matching logs to inject into the system prompt as HISTORICAL DATA.
+    // Only runs for non-routine health chat (routines don't need historical lookups).
+    const trackersMini = trackers.map(t => ({ id: t.id, name: t.name }))
+    let historicalContext: TrackerLogWithName[] | undefined
+
+    if (!activeRoutine && message) {
+      const HISTORICAL_INTENT_PATTERNS = [
+        /\byesterday\b/i,
+        /\blast\s+(week|month)\b/i,
+        /\blast\s+\d+\s+days?\b/i,
+        /\bsame\s+\S+\s+from\b/i,
+        /\bwhat\s+did\s+i\b/i,
+        /\bcheck\s+my\b/i,
+        /\bhow\s+was\s+my\b/i,
+        /\bsummar[iy]se?\b/i,
+        /\banaly[sz]e?\b/i,
+        /\bthat\s+(food|item|meal|drink|snack)\b/i,
+      ]
+      const hasHistoricalIntent = HISTORICAL_INTENT_PATTERNS.some(p => p.test(message))
+
+      if (hasHistoricalIntent) {
+        try {
+          // Compute date ranges relative to actualDate (client's physical device date)
+          const actualDateObj = new Date(`${today}T00:00:00.000Z`)
+
+          const getDateStr = (d: Date): string => d.toISOString().split('T')[0]
+
+          const yesterday = new Date(actualDateObj)
+          yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+          const yesterdayStr = getDateStr(yesterday)
+
+          if (/\byesterday\b/i.test(message)) {
+            // "same banh mi from yesterday" → text search filtered to yesterday
+            const namedItemMatch = message.match(/\bsame\s+(.+?)\s+from\s+yesterday\b/i)
+            if (namedItemMatch) {
+              const searchQuery = namedItemMatch[1].trim()
+              const allMatches = await searchLogsByFieldText(searchQuery, supabase, trackersMini, 10)
+              historicalContext = allMatches.filter(l => l.logged_at.startsWith(yesterdayStr))
+              if (historicalContext.length === 0) historicalContext = allMatches.slice(0, 5)
+            } else {
+              historicalContext = await getLogsForDateRange(yesterdayStr, yesterdayStr, supabase, trackersMini)
+            }
+          } else if (/\blast\s+week\b/i.test(message)) {
+            const dayOfWeek = actualDateObj.getUTCDay() // 0=Sun
+            const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+            const lastMonday = new Date(actualDateObj)
+            lastMonday.setUTCDate(actualDateObj.getUTCDate() - daysToMonday - 7)
+            const lastSunday = new Date(lastMonday)
+            lastSunday.setUTCDate(lastMonday.getUTCDate() + 6)
+            historicalContext = await getLogsForDateRange(getDateStr(lastMonday), getDateStr(lastSunday), supabase, trackersMini)
+          } else if (/\blast\s+month\b/i.test(message)) {
+            const firstOfLastMonth = new Date(Date.UTC(actualDateObj.getUTCFullYear(), actualDateObj.getUTCMonth() - 1, 1))
+            const lastOfLastMonth = new Date(Date.UTC(actualDateObj.getUTCFullYear(), actualDateObj.getUTCMonth(), 0))
+            historicalContext = await getLogsForDateRange(getDateStr(firstOfLastMonth), getDateStr(lastOfLastMonth), supabase, trackersMini)
+          } else {
+            const nDaysMatch = message.match(/\blast\s+(\d+)\s+days?\b/i)
+            if (nDaysMatch) {
+              const n = parseInt(nDaysMatch[1], 10)
+              const startDate = new Date(actualDateObj)
+              startDate.setUTCDate(startDate.getUTCDate() - n)
+              historicalContext = await getLogsForDateRange(getDateStr(startDate), yesterdayStr, supabase, trackersMini)
+            } else if (/\bsummar[iy]se?\b|\banaly[sz]e?\b/i.test(message)) {
+              // Generic summary/analysis — fetch last 7 days
+              const weekAgo = new Date(actualDateObj)
+              weekAgo.setUTCDate(weekAgo.getUTCDate() - 7)
+              historicalContext = await getLogsForDateRange(getDateStr(weekAgo), yesterdayStr, supabase, trackersMini)
+            } else {
+              // Named-item recall or "what did I" / "how was my" — text search
+              const searchTermMatch = message.match(/(?:that\s+(?:food|item|meal|drink|snack)|what\s+did\s+i\s+(?:eat|have|log)|how\s+was\s+my\s+(\w+))/i)
+              if (searchTermMatch) {
+                const term = searchTermMatch[1] ?? ''
+                if (term) {
+                  historicalContext = await searchLogsByFieldText(term, supabase, trackersMini, 10)
+                }
+              }
+            }
+          }
+          console.log(`[ChatRoute] Historical context: ${historicalContext?.length ?? 0} logs fetched`)
+        } catch (err) {
+          console.error('[ChatRoute] Historical context fetch failed:', err)
+          historicalContext = []
+        }
+      }
+    }
+
     // 3. Build System Prompt priority
     // daySessionActive: true when an open session exists — AI logs to loggingDate by default
     // daySessionActive: false — neutral state, AI asks user to confirm date
@@ -299,11 +386,11 @@ export async function POST(req: Request): Promise<Response> {
       systemPrompt = buildRoutineSystemPrompt(activeRoutine, trackers, session.current_step_index, brainContext, dayLogs, loggingDate, today)
     } else if (activeAgent) {
       console.log(`[ChatRoute] Using agent prompt: ${activeAgent.name}`)
-      const yahaSection = buildHealthSystemPrompt({ trackers, date: loggingDate, actualDate: today, userContext: brainContext, dayLogs, daySessionActive })
+      const yahaSection = buildHealthSystemPrompt({ trackers, date: loggingDate, actualDate: today, userContext: brainContext, dayLogs, daySessionActive, historicalContext })
       systemPrompt = `${activeAgent.system_prompt}\n\n---\n## YAHA HEALTH LOGGING CAPABILITIES\n${yahaSection}`
     } else {
       console.log(`[ChatRoute] Using standard health prompt. daySession=${daySessionActive ? loggingDate : 'neutral'}`)
-      systemPrompt = buildHealthSystemPrompt({ trackers, date: loggingDate, actualDate: today, userContext: brainContext, dayLogs, daySessionActive })
+      systemPrompt = buildHealthSystemPrompt({ trackers, date: loggingDate, actualDate: today, userContext: brainContext, dayLogs, daySessionActive, historicalContext })
     }
 
     // Build ChatInput

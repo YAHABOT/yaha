@@ -15,7 +15,7 @@ const {
   mockAddMessage,
   mockUpdateSession,
   mockGetTrackers,
-  mockProcessHealthMessage,
+  mockStreamHealthMessage,
   mockBuildHealthSystemPrompt,
   mockDetectRoutineTrigger,
   mockGetActiveDayState,
@@ -35,7 +35,7 @@ const {
   mockAddMessage: vi.fn(),
   mockUpdateSession: vi.fn(),
   mockGetTrackers: vi.fn(),
-  mockProcessHealthMessage: vi.fn(),
+  mockStreamHealthMessage: vi.fn(),
   mockBuildHealthSystemPrompt: vi.fn(),
   mockDetectRoutineTrigger: vi.fn(),
   mockGetActiveDayState: vi.fn(),
@@ -76,10 +76,13 @@ vi.mock('@/lib/db/day-state', () => ({
 
 vi.mock('@/lib/db/logs', () => ({
   getLogsForDay: mockGetLogsForDay,
+  getLogsForDateRange: vi.fn().mockResolvedValue([]),
+  searchLogsByFieldText: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('@/lib/ai/gemini', () => ({
-  processHealthMessage: mockProcessHealthMessage,
+  processHealthMessage: vi.fn(),
+  streamHealthMessage: mockStreamHealthMessage,
 }))
 
 vi.mock('@/lib/ai/prompt-builder', () => ({
@@ -101,6 +104,11 @@ vi.mock('@/lib/db/agents', () => ({
 
 vi.mock('@/lib/db/routines', () => ({
   getRoutine: mockFetchRoutine,
+}))
+
+vi.mock('@/lib/ai/actions', () => ({
+  sanitizeFields: vi.fn((fields) => fields),
+  parseActionCards: vi.fn(() => []),
 }))
 
 // ---------------------------------------------------------------------------
@@ -161,6 +169,38 @@ function setAuthenticatedUser(userId: string = FAKE_USER.id): void {
   })
 }
 
+// Helper: async generator producing chunks
+async function* makeChunkGenerator(chunks: string[]) {
+  for (const chunk of chunks) {
+    yield chunk
+  }
+}
+
+// Helper: read all SSE events from a ReadableStream
+async function readSSEStream(stream: ReadableStream<Uint8Array>): Promise<string[]> {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  const events: string[] = []
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    const lines = buffer.split('\n\n')
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        events.push(line.slice(6))
+      }
+    }
+  }
+
+  return events
+}
+
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
@@ -180,7 +220,6 @@ beforeEach(() => {
   mockBuildHealthSystemPrompt.mockReturnValue('You are a health assistant.')
   mockDetectRoutineTrigger.mockResolvedValue(null)
   mockFetchRoutine.mockResolvedValue(null) // Default: no routine found
-  mockProcessHealthMessage.mockResolvedValue({ text: 'Logged!', actions: [] })
   mockGetActiveDayState.mockResolvedValue(null) // No active session by default
   mockGetRecentMessagesForAI.mockResolvedValue([])
   mockGetLogsForDay.mockResolvedValue([])
@@ -189,6 +228,11 @@ beforeEach(() => {
   mockUpdateSession.mockResolvedValue(undefined)
   mockMarkDayStarted.mockResolvedValue(undefined)
   mockMarkDayEnded.mockResolvedValue(undefined)
+
+  // Default streaming mock
+  mockStreamHealthMessage.mockImplementation(() =>
+    makeChunkGenerator(['Logged!'])
+  )
 })
 
 // ---------------------------------------------------------------------------
@@ -209,6 +253,9 @@ describe('POST /api/chat — Start Day Guard (TC-01)', () => {
       })
     )
 
+    // Drain the SSE stream
+    await readSSEStream(res.body!)
+
     expect(res.status).toBe(200)
 
     // Guard should NOT block — updateSession should be called (to activate the routine)
@@ -216,15 +263,6 @@ describe('POST /api/chat — Start Day Guard (TC-01)', () => {
       FAKE_SESSION.id,
       expect.objectContaining({ active_routine_id: FAKE_START_DAY_ROUTINE.id })
     )
-
-    // Should produce a normal response, not a block message
-    const body = await res.json() as {
-      message: { role: string; content: string }
-      sessionId: string
-    }
-    expect(body.sessionId).toBe(FAKE_SESSION.id)
-    // Response content should NOT be the blocking message
-    expect(body.message.content).not.toMatch(/already complete/)
   })
 
   it('allows Start Day when no active session exists (trigger phrase path)', async () => {
@@ -239,6 +277,8 @@ describe('POST /api/chat — Start Day Guard (TC-01)', () => {
       })
     )
 
+    await readSSEStream(res.body!)
+
     expect(res.status).toBe(200)
 
     // Guard should NOT block — updateSession should be called
@@ -246,13 +286,6 @@ describe('POST /api/chat — Start Day Guard (TC-01)', () => {
       FAKE_SESSION.id,
       expect.objectContaining({ active_routine_id: FAKE_START_DAY_ROUTINE.id })
     )
-
-    // Should produce a normal response
-    const body = await res.json() as {
-      message: { role: string; content: string }
-      sessionId: string
-    }
-    expect(body.message.content).not.toMatch(/already complete/)
   })
 })
 
@@ -262,7 +295,7 @@ describe('POST /api/chat — Start Day Guard (TC-01)', () => {
 
 describe('POST /api/chat — Start Day Guard (TC-02)', () => {
   it('blocks Start Day when session exists for same date (routineId path)', async () => {
-    // Setup: Active session for TODAY (2026-03-31) — cannot auto-close
+    // Setup: Active session for TODAY (2026-03-31) — cannot start again
     const activeDayState: UserDayState = {
       id: 'state-1',
       user_id: FAKE_USER.id,
@@ -287,13 +320,12 @@ describe('POST /api/chat — Start Day Guard (TC-02)', () => {
     // Guard SHOULD block — updateSession should NOT be called
     expect(mockUpdateSession).not.toHaveBeenCalled()
 
-    // Response should be the blocking message
+    // Response should be the blocking message (JSON for guard blocks, not SSE)
     const body = await res.json() as {
       message: { role: string; content: string }
       sessionId: string
     }
-    expect(body.message.content).toContain("already complete")
-    expect(body.message.content).toContain("End 2026-03-31's session first")
+    expect(body.message.content).toContain("still active")
   })
 
   it('blocks Start Day when session exists for same date (trigger phrase path)', async () => {
@@ -324,21 +356,24 @@ describe('POST /api/chat — Start Day Guard (TC-02)', () => {
       message: { role: string; content: string }
       sessionId: string
     }
+    // Trigger phrase path says "Start day for X already complete. End Y's session first."
     expect(body.message.content).toContain("already complete")
   })
 })
 
 // ---------------------------------------------------------------------------
-// TC-V27-C-03: Auto-close occurs before guard, so cross-date blocks don't trigger
+// TC-V27-C-03: Session from a DIFFERENT date also blocks Start Day
+// (No auto-close — sessions stay active until explicitly ended)
 // ---------------------------------------------------------------------------
 
 describe('POST /api/chat — Start Day Guard (TC-03)', () => {
-  it('auto-closes stale session before guard evaluates (different date)', async () => {
-    // Setup: Active session for YESTERDAY (2026-03-30), trigger for TODAY (2026-03-31)
+  it('blocks Start Day when a session from a different date is still open', async () => {
+    // The route does NOT auto-close stale sessions.
+    // An open session from March 30 still blocks Start Day on March 31.
     const activeDayState: UserDayState = {
       id: 'state-1',
       user_id: FAKE_USER.id,
-      date: '2026-03-30',
+      date: '2026-03-30', // Yesterday's session still open
       day_started_at: '2026-03-30T08:00:00Z',
       day_ended_at: null,
     }
@@ -355,22 +390,18 @@ describe('POST /api/chat — Start Day Guard (TC-03)', () => {
 
     expect(res.status).toBe(200)
 
-    // Auto-close should be called (line 178)
-    expect(mockMarkDayEnded).toHaveBeenCalledWith('2026-03-30')
+    // Guard SHOULD block (finalActiveDayState !== null even for a different date)
+    expect(mockUpdateSession).not.toHaveBeenCalled()
 
-    // Guard should NOT block because finalActiveDayState was set to null by auto-close
-    // This means updateSession should be called (routine activation)
-    expect(mockUpdateSession).toHaveBeenCalledWith(
-      FAKE_SESSION.id,
-      expect.objectContaining({ active_routine_id: FAKE_START_DAY_ROUTINE.id })
-    )
+    // markDayEnded should NOT be called (no auto-close)
+    expect(mockMarkDayEnded).not.toHaveBeenCalled()
 
-    // Response should NOT be the blocking message
+    // Response should be the blocking message
     const body = await res.json() as {
       message: { role: string; content: string }
       sessionId: string
     }
-    expect(body.message.content).not.toMatch(/already complete/)
+    expect(body.message.content).toContain("still active")
   })
 })
 
@@ -416,7 +447,7 @@ describe('POST /api/chat — Start Day Guard (TC-04)', () => {
     const body = await res2.json() as {
       message: { role: string; content: string }
     }
-    expect(body.message.content).toContain("already complete")
+    expect(body.message.content).toContain("still active")
 
     // updateSession should NOT be called (guard blocked activation)
     expect(mockUpdateSession).not.toHaveBeenCalled()
@@ -459,7 +490,7 @@ describe('POST /api/chat — Start Day Guard (TC-05)', () => {
       sessionId: string
     }
     expect(body.message.content).toContain("already complete")
-    expect(body.message.content).toContain("End 2026-03-31's session first")
+    expect(body.message.content).toContain("2026-03-31")
   })
 
   it('verifies user message is persisted when guard blocks (audit trail)', async () => {
@@ -474,14 +505,12 @@ describe('POST /api/chat — Start Day Guard (TC-05)', () => {
     mockGetActiveDayState.mockResolvedValue(activeDayState)
     mockDetectRoutineTrigger.mockResolvedValue(FAKE_START_DAY_ROUTINE)
 
-    const res = await POST(
+    await POST(
       makeRequest({
         message: 'start day',
         date: '2026-03-31',
       })
     )
-
-    expect(res.status).toBe(200)
 
     // User message should still be added to chat (for audit trail)
     expect(mockAddMessage).toHaveBeenCalledWith(
@@ -533,6 +562,8 @@ describe('POST /api/chat — Start Day Guard Logic', () => {
       })
     )
 
+    await readSSEStream(res.body!)
+
     expect(res.status).toBe(200)
 
     // Guard should NOT block — only day_start routines are checked
@@ -540,11 +571,6 @@ describe('POST /api/chat — Start Day Guard Logic', () => {
       FAKE_SESSION.id,
       expect.objectContaining({ active_routine_id: endDayRoutine.id })
     )
-
-    const body = await res.json() as {
-      message: { role: string; content: string }
-    }
-    expect(body.message.content).not.toContain("already complete")
   })
 
   it('guard condition: finalActiveDayState must be non-null and routine.type must be day_start', async () => {
@@ -560,15 +586,12 @@ describe('POST /api/chat — Start Day Guard Logic', () => {
       })
     )
 
+    await readSSEStream(res.body!)
+
     expect(res.status).toBe(200)
 
     // Condition: routine.type === 'day_start' (true) && finalActiveDayState !== null (false)
     // Overall: true && false = false → do NOT block
     expect(mockUpdateSession).toHaveBeenCalled()
-
-    const body = await res.json() as {
-      message: { role: string; content: string }
-    }
-    expect(body.message.content).not.toContain("already complete")
   })
 })

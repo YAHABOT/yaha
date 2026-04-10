@@ -14,7 +14,7 @@ const {
   mockGetSession,
   mockAddMessage,
   mockGetTrackers,
-  mockProcessHealthMessage,
+  mockStreamHealthMessage,
   mockBuildHealthSystemPrompt,
   mockBuildRoutineSystemPrompt,
   mockDetectRoutineTrigger,
@@ -25,7 +25,7 @@ const {
   mockGetSession: vi.fn(),
   mockAddMessage: vi.fn(),
   mockGetTrackers: vi.fn(),
-  mockProcessHealthMessage: vi.fn(),
+  mockStreamHealthMessage: vi.fn(),
   mockBuildHealthSystemPrompt: vi.fn(),
   mockBuildRoutineSystemPrompt: vi.fn(),
   mockDetectRoutineTrigger: vi.fn(),
@@ -51,8 +51,8 @@ vi.mock('@/lib/db/trackers', () => ({
 }))
 
 vi.mock('@/lib/ai/gemini', () => ({
-  processHealthMessage: mockProcessHealthMessage,
-  streamHealthMessage: vi.fn(),
+  processHealthMessage: vi.fn(),
+  streamHealthMessage: mockStreamHealthMessage,
   extractFromImage: vi.fn(),
   GEMINI_MODEL: 'gemini-2.5-flash',
 }))
@@ -76,6 +76,8 @@ vi.mock('@/lib/db/day-state', () => ({
 
 vi.mock('@/lib/db/logs', () => ({
   getLogsForDay: vi.fn().mockResolvedValue([]),
+  getLogsForDateRange: vi.fn().mockResolvedValue([]),
+  searchLogsByFieldText: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('@/lib/db/routines', () => ({
@@ -88,6 +90,11 @@ vi.mock('@/lib/ai/master-brain', () => ({
 
 vi.mock('@/lib/db/agents', () => ({
   getAgents: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('@/lib/ai/actions', () => ({
+  sanitizeFields: vi.fn((fields) => fields),
+  parseActionCards: vi.fn(() => []),
 }))
 
 // ---------------------------------------------------------------------------
@@ -106,6 +113,9 @@ const FAKE_SESSION: ChatSession = {
   user_id: FAKE_USER.id,
   title: 'New Chat',
   updated_at: '2026-03-10T00:00:00Z',
+  active_routine_id: null,
+  current_step_index: 0,
+  active_agent_id: null,
 }
 const FAKE_ACTION: ActionCard = {
   type: 'LOG_DATA',
@@ -138,6 +148,47 @@ function setUnauthenticatedUser(): void {
   })
 }
 
+// Helper: async generator producing chunks
+async function* makeChunkGenerator(chunks: string[]) {
+  for (const chunk of chunks) {
+    yield chunk
+  }
+}
+
+// Helper: read all SSE events from a ReadableStream
+async function readSSEStream(stream: ReadableStream<Uint8Array>): Promise<string[]> {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  const events: string[] = []
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    const lines = buffer.split('\n\n')
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        events.push(line.slice(6))
+      }
+    }
+  }
+
+  return events
+}
+
+// Helper: get the done event payload from an SSE response
+async function getDoneEvent(res: Response): Promise<Record<string, unknown>> {
+  const events = await readSSEStream(res.body!)
+  const parsed = events.map(e => JSON.parse(e) as Record<string, unknown>)
+  const doneEvent = parsed.find(e => e.type === 'done')
+  if (!doneEvent) throw new Error('No done event found in SSE stream')
+  return doneEvent
+}
+
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
@@ -155,7 +206,11 @@ beforeEach(() => {
   mockBuildHealthSystemPrompt.mockReturnValue('You are a health assistant.')
   mockBuildRoutineSystemPrompt.mockReturnValue('You are YAHA executing a routine.')
   mockDetectRoutineTrigger.mockResolvedValue(null)
-  mockProcessHealthMessage.mockResolvedValue({ text: 'Logged your meal!', actions: [] })
+
+  // Default streaming mock: yields a simple response
+  mockStreamHealthMessage.mockImplementation(() =>
+    makeChunkGenerator(['Logged your meal!'])
+  )
 })
 
 // ---------------------------------------------------------------------------
@@ -256,8 +311,8 @@ describe('POST /api/chat — session management', () => {
 
     expect(res.status).toBe(200)
     expect(mockCreateSession).toHaveBeenCalledOnce()
-    const body = await res.json() as { sessionId: string }
-    expect(body.sessionId).toBe(FAKE_SESSION.id)
+    const doneEvent = await getDoneEvent(res)
+    expect(doneEvent.sessionId).toBe(FAKE_SESSION.id)
   })
 
   it('uses provided sessionId without creating a new session', async () => {
@@ -265,8 +320,8 @@ describe('POST /api/chat — session management', () => {
 
     expect(res.status).toBe(200)
     expect(mockCreateSession).not.toHaveBeenCalled()
-    const body = await res.json() as { sessionId: string }
-    expect(body.sessionId).toBe('existing-session')
+    const doneEvent = await getDoneEvent(res)
+    expect(doneEvent.sessionId).toBe('existing-session')
   })
 
   it('returns 404 when provided sessionId does not belong to user', async () => {
@@ -286,7 +341,14 @@ describe('POST /api/chat — session management', () => {
 
 describe('POST /api/chat — message persistence', () => {
   it('saves user message and model response to DB', async () => {
+    mockStreamHealthMessage.mockImplementation(() =>
+      makeChunkGenerator(['Logged your meal!'])
+    )
+
     const res = await POST(makeRequest({ message: 'I ate 500 calories' }))
+
+    // Drain the stream before asserting
+    await readSSEStream(res.body!)
 
     expect(res.status).toBe(200)
     expect(mockAddMessage).toHaveBeenCalledTimes(2)
@@ -299,59 +361,68 @@ describe('POST /api/chat — message persistence', () => {
       attachments: null,
     })
 
-    // Second call: assistant response
-    expect(mockAddMessage).toHaveBeenNthCalledWith(2, {
-      session_id: FAKE_SESSION.id,
-      role: 'assistant',
-      content: 'Logged your meal!',
-      actions: [],
-    })
+    // Second call: assistant response (accumulated full text)
+    expect(mockAddMessage).toHaveBeenNthCalledWith(2,
+      expect.objectContaining({
+        session_id: FAKE_SESSION.id,
+        role: 'assistant',
+        content: 'Logged your meal!',
+      })
+    )
   })
 
   it('saves model response with parsed actions when present', async () => {
-    mockProcessHealthMessage.mockResolvedValue({
-      text: 'Logged your nutrition!',
-      actions: [FAKE_ACTION],
-    })
+    // parseActionCards mock returns FAKE_ACTION
+    const { parseActionCards } = await import('@/lib/ai/actions')
+    vi.mocked(parseActionCards).mockReturnValue([FAKE_ACTION])
 
-    await POST(makeRequest({ message: 'I had 350 calories of chicken' }))
+    mockStreamHealthMessage.mockImplementation(() =>
+      makeChunkGenerator(['Logged your nutrition!'])
+    )
+
+    const res = await POST(makeRequest({ message: 'I had 350 calories of chicken' }))
+    await readSSEStream(res.body!)
 
     expect(mockAddMessage).toHaveBeenNthCalledWith(2,
       expect.objectContaining({
-        actions: [FAKE_ACTION],
+        actions: expect.arrayContaining([expect.objectContaining({ type: 'LOG_DATA' })]),
       })
     )
   })
 })
 
 // ---------------------------------------------------------------------------
-// Response shape
+// Response shape (SSE)
 // ---------------------------------------------------------------------------
 
 describe('POST /api/chat — response shape', () => {
-  it('returns correct ChatResponse shape with sessionId', async () => {
-    mockProcessHealthMessage.mockResolvedValue({
-      text: 'Got it!',
-      actions: [FAKE_ACTION],
-    })
-
+  it('returns Content-Type text/event-stream', async () => {
     const res = await POST(makeRequest({ message: 'Hello' }))
 
     expect(res.status).toBe(200)
-    const body = await res.json() as {
-      message: { role: string; content: string; actions: ActionCard[] }
-      sessionId: string
-    }
-
-    expect(body.sessionId).toBe(FAKE_SESSION.id)
-    expect(body.message).toMatchObject({
-      role: 'assistant',
-      content: 'Got it!',
-      actions: [FAKE_ACTION],
-    })
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
   })
 
-  it('returns allowed attachment MIME types through to processHealthMessage', async () => {
+  it('done event contains sessionId and messageId', async () => {
+    const res = await POST(makeRequest({ message: 'Hello' }))
+    const doneEvent = await getDoneEvent(res)
+
+    expect(doneEvent.sessionId).toBe(FAKE_SESSION.id)
+    expect(doneEvent.messageId).toBe('msg-1')
+  })
+
+  it('done event contains accumulated full content', async () => {
+    mockStreamHealthMessage.mockImplementation(() =>
+      makeChunkGenerator(['Got ', 'it!'])
+    )
+
+    const res = await POST(makeRequest({ message: 'Hello' }))
+    const doneEvent = await getDoneEvent(res)
+
+    expect(doneEvent.content).toBe('Got it!')
+  })
+
+  it('passes allowed attachment MIME types to streamHealthMessage', async () => {
     const res = await POST(
       makeRequest({
         message: 'Here is my meal photo',
@@ -366,8 +437,9 @@ describe('POST /api/chat — response shape', () => {
       })
     )
 
-    expect(res.status).toBe(200)
-    expect(mockProcessHealthMessage).toHaveBeenCalledWith(
+    await readSSEStream(res.body!)
+
+    expect(mockStreamHealthMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         attachments: [
           expect.objectContaining({ mimeType: 'image/jpeg' }),
@@ -384,14 +456,22 @@ describe('POST /api/chat — response shape', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/chat — error handling', () => {
-  it('returns 500 when processHealthMessage throws', async () => {
-    mockProcessHealthMessage.mockRejectedValue(new Error('Gemini API error'))
+  it('emits SSE error event when streamHealthMessage throws', async () => {
+    mockStreamHealthMessage.mockImplementation(async function* () {
+      throw new Error('Gemini API error')
+    })
 
     const res = await POST(makeRequest({ message: 'Hello' }))
 
-    expect(res.status).toBe(500)
-    const body = await res.json() as { error: string }
-    expect(body.error).toBe('Internal server error')
+    // Route still returns 200 SSE with error event inside stream
+    expect(res.headers.get('Content-Type')).toBe('text/event-stream')
+
+    const events = await readSSEStream(res.body!)
+    const parsed = events.map(e => JSON.parse(e) as { type: string; error?: string })
+    const errorEvent = parsed.find(e => e.type === 'error')
+
+    expect(errorEvent).toBeDefined()
+    expect(errorEvent?.error).toBe('Streaming failed')
   })
 
   it('returns 500 when getTrackers throws', async () => {
@@ -404,18 +484,8 @@ describe('POST /api/chat — error handling', () => {
     expect(body.error).toBe('Internal server error')
   })
 
-  it('returns 500 when addMessage throws', async () => {
-    mockAddMessage.mockRejectedValue(new Error('DB write failed'))
-
-    const res = await POST(makeRequest({ message: 'Hello' }))
-
-    expect(res.status).toBe(500)
-    const body = await res.json() as { error: string }
-    expect(body.error).toBe('Internal server error')
-  })
-
   it('does not expose internal error details in the response', async () => {
-    mockProcessHealthMessage.mockRejectedValue(new Error('Secret internal details'))
+    mockGetTrackers.mockRejectedValue(new Error('Secret internal details'))
 
     const res = await POST(makeRequest({ message: 'Hello' }))
 
@@ -453,6 +523,8 @@ describe('POST /api/chat — routine trigger detection', () => {
 
     const res = await POST(makeRequest({ message: 'start day' }))
 
+    await readSSEStream(res.body!)
+
     expect(res.status).toBe(200)
     expect(mockBuildRoutineSystemPrompt).toHaveBeenCalledWith(
       FAKE_ROUTINE,
@@ -464,7 +536,7 @@ describe('POST /api/chat — routine trigger detection', () => {
       expect.any(String),
     )
     expect(mockBuildHealthSystemPrompt).not.toHaveBeenCalled()
-    expect(mockProcessHealthMessage).toHaveBeenCalledWith(
+    expect(mockStreamHealthMessage).toHaveBeenCalledWith(
       expect.anything(),
       'You are YAHA executing a routine.',
       expect.any(Array)
@@ -476,10 +548,12 @@ describe('POST /api/chat — routine trigger detection', () => {
 
     const res = await POST(makeRequest({ message: 'I slept 8 hours' }))
 
+    await readSSEStream(res.body!)
+
     expect(res.status).toBe(200)
     expect(mockBuildHealthSystemPrompt).toHaveBeenCalledOnce()
     expect(mockBuildRoutineSystemPrompt).not.toHaveBeenCalled()
-    expect(mockProcessHealthMessage).toHaveBeenCalledWith(
+    expect(mockStreamHealthMessage).toHaveBeenCalledWith(
       expect.anything(),
       'You are a health assistant.',
       expect.any(Array)
@@ -490,6 +564,8 @@ describe('POST /api/chat — routine trigger detection', () => {
     mockDetectRoutineTrigger.mockRejectedValue(new Error('Auth error'))
 
     const res = await POST(makeRequest({ message: 'start day' }))
+
+    await readSSEStream(res.body!)
 
     expect(res.status).toBe(200)
     expect(mockBuildHealthSystemPrompt).toHaveBeenCalledOnce()

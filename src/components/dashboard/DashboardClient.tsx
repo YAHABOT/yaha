@@ -7,7 +7,7 @@ import { RoutineBanner } from '@/components/dashboard/RoutineBanner'
 import { WidgetCard } from '@/components/dashboard/WidgetCard'
 import { AddWidgetModal } from '@/components/dashboard/AddWidgetModal'
 import { deleteWidgetAction } from '@/app/actions/dashboard'
-import { resetDayStateAction, skipStartDayAction, skipEndDayAction } from '@/app/actions/day-state'
+import { resetDayStateAction, resetEndDayStateAction, skipStartDayAction, skipEndDayAction } from '@/app/actions/day-state'
 import type { Widget, WidgetValue } from '@/types/widget'
 import type { Tracker } from '@/types/tracker'
 import type { Routine } from '@/types/routine'
@@ -69,6 +69,12 @@ export function DashboardClient({
   function handleResetDayState(): void {
     startTransition(async () => {
       await resetDayStateAction()
+    })
+  }
+
+  function handleResetEndDayState(): void {
+    startTransition(async () => {
+      await resetEndDayStateAction()
     })
   }
 
@@ -159,7 +165,7 @@ export function DashboardClient({
             </button>
             <button
               type="button"
-              onClick={handleResetDayState}
+              onClick={handleResetEndDayState}
               disabled={isPending}
               className="flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400 transition-all duration-300 hover:border-indigo-500/50 hover:bg-indigo-500/20 disabled:opacity-40"
               title="Clear day_ended_at — makes End Day banner reappear"

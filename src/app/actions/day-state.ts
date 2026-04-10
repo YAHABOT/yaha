@@ -71,3 +71,31 @@ export async function resetDayStateAction(): Promise<{ error?: string }> {
     return { error: e instanceof Error ? e.message : String(e) }
   }
 }
+
+/**
+ * Developer action: nulls only day_ended_at for today, leaving day_started_at intact.
+ * Allows End Day routine to be re-tested without resetting the full day session.
+ */
+export async function resetEndDayStateAction(): Promise<{ error?: string }> {
+  try {
+    const supabase = await createServerClient()
+    const user = await getSafeUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const today = getTodayDate()
+
+    // Clear only day_ended_at — day_started_at remains so the session stays active
+    const { error } = await supabase
+      .from('user_day_state')
+      .update({ day_ended_at: null })
+      .eq('user_id', user.id)
+      .eq('date', today)
+
+    if (error) return { error: error.message }
+
+    revalidatePath('/dashboard')
+    return {}
+  } catch (e: unknown) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+}

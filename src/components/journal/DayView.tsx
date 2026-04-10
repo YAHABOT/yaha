@@ -74,7 +74,7 @@ export function DayView({ date, trackers, logs, loggedDates, correlations }: Pro
   const [correlatorOpen, setCorrelatorOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const today = getLocalDateStr()
-  const isToday = date >= today
+  const isToday = date === today
 
   const grouped = groupLogsByTracker(logs)
   const trackersWithLogs = trackers.filter((t) => grouped.has(t.id))

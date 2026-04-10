@@ -178,21 +178,59 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   const handleAgentSelect = async (agentId: string | null) => {
     setActiveAgentId(agentId)
     if (currentSessionId !== 'new') {
-      // Update session explicitly
+      // Update session — /api/chat always returns text/event-stream; use SSE reader
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: currentSessionId, agentId: agentId || null, message: "Switching agent..." })
+        body: JSON.stringify({ sessionId: currentSessionId, agentId: agentId || null, message: "Switching agent...", date: getLocalDateStr() })
       })
-      if (res.ok) {
+      if (!res.ok) return
+
+      let finalSessionId = currentSessionId
+      let finalMessageId: string | null = null
+      let finalContent = ''
+      let finalActions: unknown[] = []
+
+      const contentType = res.headers.get('content-type') ?? ''
+      if (contentType.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            try {
+              const event = JSON.parse(line.slice(6)) as { type: string; messageId?: string; sessionId?: string; content?: string; actions?: unknown[] }
+              if (event.type === 'done' && event.messageId) {
+                finalMessageId = event.messageId
+                finalSessionId = event.sessionId ?? currentSessionId
+                finalContent = event.content ?? ''
+                finalActions = event.actions ?? []
+              }
+            } catch { /* ignore parse errors */ }
+          }
+        }
+      } else {
         const data = await res.json()
-        if (!isMountedRef.current) return
+        finalMessageId = data.message?.id ?? `sw-${Date.now()}`
+        finalSessionId = data.sessionId ?? currentSessionId
+        finalContent = data.message?.content ?? ''
+        finalActions = data.message?.actions ?? []
+      }
+
+      if (!isMountedRef.current) return
+      if (finalMessageId) {
         setMessages(prev => [...prev, {
-          id: `sw-${Date.now()}`,
-          session_id: currentSessionId,
-          role: 'assistant',
-          content: data.message.content,
-          actions: null,
+          id: finalMessageId!,
+          session_id: finalSessionId,
+          role: 'assistant' as const,
+          content: finalContent,
+          actions: finalActions as ChatMessage['actions'],
           attachments: null,
           created_at: new Date().toISOString()
         }])

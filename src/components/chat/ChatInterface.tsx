@@ -579,27 +579,65 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
         throw new Error(errorMessage)
       }
 
-      const data = await res.json()
+      // The route returns text/event-stream — detect and handle SSE vs legacy JSON.
+      const attachContentType = res.headers.get('content-type') ?? ''
+      let attachSessionId = currentSessionId
+      let attachMessageId: string | null = null
+      let attachContent = ''
+      let attachActions: unknown[] = []
+
+      if (attachContentType.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            try {
+              const event = JSON.parse(line.slice(6)) as { type: string; messageId?: string; sessionId?: string; content?: string; actions?: unknown[] }
+              if (event.type === 'done' && event.messageId) {
+                attachMessageId = event.messageId
+                attachSessionId = event.sessionId ?? currentSessionId
+                attachContent = event.content ?? ''
+                attachActions = event.actions ?? []
+              }
+            } catch { /* ignore parse errors */ }
+          }
+        }
+      } else {
+        const data = await res.json()
+        attachMessageId = data.message?.id ?? `mod-${Date.now()}`
+        attachSessionId = data.sessionId
+        attachContent = data.message?.content ?? ''
+        attachActions = data.message?.actions ?? []
+      }
+
       if (!isMountedRef.current) return
-      const assistantMsgId = data.message?.id ?? `mod-${Date.now()}`
-      setMessages((prev) => {
-        // FIX-4: deduplicate — skip if this message id already exists in state
-        if (prev.some(m => m.id === assistantMsgId)) return prev
-        return [...prev, {
-          id: assistantMsgId,
-          session_id: data.sessionId,
-          role: 'assistant',
-          content: data.message.content,
-          actions: data.message.actions,
-          attachments: data.message.attachments || null,
-          created_at: new Date().toISOString()
-        }]
-      })
+      if (attachMessageId) {
+        setMessages((prev) => {
+          // FIX-4: deduplicate — skip if this message id already exists in state
+          if (prev.some(m => m.id === attachMessageId)) return prev
+          return [...prev, {
+            id: attachMessageId!,
+            session_id: attachSessionId,
+            role: 'assistant' as const,
+            content: attachContent,
+            actions: attachActions as ChatMessage['actions'],
+            attachments: null,
+            created_at: new Date().toISOString()
+          }]
+        })
+      }
 
       setAttachedFiles([]) // Clear attachments after success
 
       // Update session state (routine progress etc.)
-      const sessRes = await fetch(`/api/chat/sessions/${data.sessionId}`)
+      const sessRes = await fetch(`/api/chat/sessions/${attachSessionId}`)
       if (sessRes.ok) {
         const nextSession = await sessRes.json()
         if (!isMountedRef.current) return
@@ -628,8 +666,8 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
       // Do NOT update the URL — Next.js 15 intercepts window.history.replaceState
       // and triggers a full page remount when the path segment changes.
       // The URL stays as /chat/new for the lifetime of this unsaved chat.
-      if (data.sessionId !== currentSessionId) {
-        setCurrentSessionId(data.sessionId)
+      if (attachSessionId !== currentSessionId) {
+        setCurrentSessionId(attachSessionId)
       }
     } catch (e: unknown) {
       if (e instanceof DOMException && e.name === 'AbortError') return // navigated away

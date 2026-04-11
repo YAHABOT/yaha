@@ -193,7 +193,10 @@ export async function POST(req: Request): Promise<Response> {
         if (routine.type === 'day_start' && finalActiveDayState !== null) {
           console.log(`[ChatRoute] Blocked Start Day — session already active for ${finalActiveDayState.date}`)
           await addMessage({ session_id: session.id, role: 'user', content: message || '', attachments: attachments ?? null })
-          const blockMsg = `Session for ${finalActiveDayState.date} is still active. Complete your End Day routine before starting ${today}. Head to the Dashboard or type your End Day trigger phrase.`
+          const isSameDay = finalActiveDayState.date === today
+          const blockMsg = isSameDay
+            ? `Your day for ${loggingDate} is already active — you're all set to continue logging.`
+            : `Session for ${finalActiveDayState.date} is still active. Complete your End Day routine before starting ${today}. Head to the Dashboard or type your End Day trigger phrase.`
           const savedBlock = await addMessage({ session_id: session.id, role: 'assistant', content: blockMsg, actions: [] })
           return Response.json({
             message: { id: savedBlock.id, role: 'assistant' as const, content: blockMsg, actions: [] },
@@ -219,7 +222,10 @@ export async function POST(req: Request): Promise<Response> {
       if (routineMatch.type === 'day_start' && finalActiveDayState !== null) {
         console.log(`[ChatRoute] Blocked Start Day — session already active for ${finalActiveDayState.date}`)
         await addMessage({ session_id: session.id, role: 'user', content: message || '', attachments: attachments ?? null })
-        const blockMsg = `Start day for ${today} already complete. End ${finalActiveDayState.date}'s session first.`
+        const isSameDay = finalActiveDayState.date === today
+        const blockMsg = isSameDay
+          ? `A session for ${today} is already active. You can continue logging or complete your End Day routine.`
+          : `Start day for ${today} already complete. End ${finalActiveDayState.date}'s session first.`
         const savedBlock = await addMessage({ session_id: session.id, role: 'assistant', content: blockMsg, actions: [] })
         return Response.json({
           message: { id: savedBlock.id, role: 'assistant' as const, content: blockMsg, actions: [] },

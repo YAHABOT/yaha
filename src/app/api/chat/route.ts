@@ -1,3 +1,5 @@
+export const maxDuration = 60 // extend Vercel function timeout for AI streaming
+
 import { createServerClient } from '@/lib/supabase/server'
 import { createSession, getSession, addMessage, updateSession, getRecentMessagesForAI } from '@/lib/db/chat'
 import { getTrackersBasic } from '@/lib/db/trackers'
@@ -481,16 +483,26 @@ export async function POST(req: Request): Promise<Response> {
 
     const stream = new ReadableStream({
       async start(controller) {
+        // Helper: enqueue without throwing when the client has disconnected
+        const safeEnqueue = (data: string) => {
+          try { controller.enqueue(encoder.encode(data)) } catch { /* client gone */ }
+        }
+
         let fullText = ''
+
+        // Emit session ID immediately so MobileChatHome can navigate to the chat
+        // page without waiting for the full AI response (fixes new-chat lag).
+        safeEnqueue(`data: ${JSON.stringify({ type: 'session', sessionId: session.id })}\n\n`)
 
         try {
           for await (const chunk of streamHealthMessage(chatInput, systemPrompt, history)) {
             fullText += chunk
-            // Forward raw text chunk to the client
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`))
+            // Forward raw text chunk to the client (best-effort — client may have navigated)
+            safeEnqueue(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`)
           }
 
-          // Full response received — parse actions and persist to DB
+          // Full response received — parse actions and persist to DB.
+          // This ALWAYS runs, even if the client disconnected after the session event.
           const rawActions = parseActionCards(fullText)
           const sanitizedActions = buildSanitizedActions(rawActions)
 
@@ -522,17 +534,17 @@ export async function POST(req: Request): Promise<Response> {
             actions: sanitizedActions,
           })
 
-          // Send terminal metadata event
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          // Send terminal metadata event (best-effort)
+          safeEnqueue(`data: ${JSON.stringify({
             type: 'done',
             messageId: assistantMessage.id,
             sessionId: session.id,
             actions: sanitizedActions,
             content: fullText,
-          })}\n\n`))
+          })}\n\n`)
         } catch (err) {
           console.error('[ChatRoute] Streaming error:', err)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', error: 'Streaming failed' })}\n\n`))
+          safeEnqueue(`data: ${JSON.stringify({ type: 'error', error: 'Streaming failed' })}\n\n`)
         } finally {
           controller.close()
         }

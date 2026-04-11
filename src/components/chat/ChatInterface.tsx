@@ -101,12 +101,62 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
   const fileCameraInputRef = useRef<HTMLInputElement>(null)
   // FIX-4: abort in-flight chat request on unmount to prevent ghost/duplicate responses
   const abortControllerRef = useRef<AbortController | null>(null)
+  // Ref to the stop function for the "pending server response" poll (new-chat early navigation)
+  const serverPollStopRef = useRef<(() => void) | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const triggerSent = useRef(false)
 
   // Mark hydrated after first client paint so the messages area doesn't flash unstyled
   useEffect(() => { setIsHydrated(true) }, [])
+
+  // NEW-CHAT POLL: When ChatInterface loads with only a user message (no AI response yet),
+  // the user navigated here early while the server was still generating. Poll via
+  // router.refresh() until the AI response appears in initialMessages.
+  useEffect(() => {
+    if (sessionId === 'new') return
+    const lastInit = initialMessages[initialMessages.length - 1]
+    if (!lastInit || lastInit.role !== 'user') return
+
+    setIsLoading(true)
+    let count = 0
+    const interval = setInterval(() => {
+      count++
+      if (count >= 20) { // 60 seconds max
+        clearInterval(interval)
+        serverPollStopRef.current = null
+        setIsLoading(false)
+      } else {
+        router.refresh()
+      }
+    }, 3000)
+
+    serverPollStopRef.current = () => {
+      clearInterval(interval)
+      serverPollStopRef.current = null
+      setIsLoading(false)
+    }
+
+    return () => {
+      clearInterval(interval)
+      serverPollStopRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // only on mount — polling is a one-time startup concern
+
+  // Sync new assistant messages received from router.refresh() into local state
+  useEffect(() => {
+    if (!serverPollStopRef.current) return // no active poll, nothing to sync
+    setMessages(prev => {
+      const existingIds = new Set(prev.map(m => m.id))
+      const fresh = initialMessages.filter(m => m.role === 'assistant' && !existingIds.has(m.id))
+      if (fresh.length === 0) return prev
+      // AI response arrived — stop polling
+      serverPollStopRef.current?.()
+      return [...prev, ...fresh]
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMessages]) // dep: only initialMessages (functional update avoids messages dep)
 
   // Warn before page refresh/close is now handled globally by RefreshGuard in app layout.
 

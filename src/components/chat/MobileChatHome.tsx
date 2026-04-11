@@ -234,14 +234,15 @@ export function MobileChatHome({ sessions }: MobileChatHomeProps): React.ReactEl
         }),
       })
       if (!res.ok) throw new Error('Failed to start chat')
-      // Route returns text/event-stream — read SSE until 'done' event to get sessionId
+      // Route emits { type: 'session', sessionId } as the FIRST event — navigate immediately
+      // so the user doesn't wait for the full AI response. The server continues generating
+      // and saves to DB; ChatInterface will poll for the response.
       const contentType = res.headers.get('content-type') ?? ''
-      let newSessionId: string | null = null
       if (contentType.includes('text/event-stream') && res.body) {
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
-        for (;;) {
+        outer: for (;;) {
           const { done, value } = await reader.read()
           if (done) break
           buffer += decoder.decode(value, { stream: true })
@@ -251,18 +252,21 @@ export function MobileChatHome({ sessions }: MobileChatHomeProps): React.ReactEl
             if (!line.startsWith('data: ')) continue
             try {
               const event = JSON.parse(line.slice(6)) as { type: string; sessionId?: string }
-              if (event.type === 'done' && event.sessionId) {
-                newSessionId = event.sessionId
+              if (event.sessionId) {
+                // Navigate as soon as we have the session ID (session or done event)
+                router.push(`/chat/${event.sessionId}`)
+                break outer
               }
             } catch { /* ignore malformed lines */ }
           }
         }
       } else {
         const data = (await res.json()) as { sessionId: string }
-        newSessionId = data.sessionId
+        if (data.sessionId) router.push(`/chat/${data.sessionId}`)
       }
-      if (newSessionId) router.push(`/chat/${newSessionId}`)
     } catch {
+      // Network error or non-ok response
+    } finally {
       setIsSubmitting(false)
     }
   }, [input, attachedFiles, activeAgentId, isSubmitting, router])

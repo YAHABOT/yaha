@@ -234,8 +234,34 @@ export function MobileChatHome({ sessions }: MobileChatHomeProps): React.ReactEl
         }),
       })
       if (!res.ok) throw new Error('Failed to start chat')
-      const data = (await res.json()) as { sessionId: string }
-      router.push(`/chat/${data.sessionId}`)
+      // Route returns text/event-stream — read SSE until 'done' event to get sessionId
+      const contentType = res.headers.get('content-type') ?? ''
+      let newSessionId: string | null = null
+      if (contentType.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            try {
+              const event = JSON.parse(line.slice(6)) as { type: string; sessionId?: string }
+              if (event.type === 'done' && event.sessionId) {
+                newSessionId = event.sessionId
+              }
+            } catch { /* ignore malformed lines */ }
+          }
+        }
+      } else {
+        const data = (await res.json()) as { sessionId: string }
+        newSessionId = data.sessionId
+      }
+      if (newSessionId) router.push(`/chat/${newSessionId}`)
     } catch {
       setIsSubmitting(false)
     }

@@ -162,7 +162,7 @@ export async function POST(req: Request): Promise<Response> {
       getTrackersBasic(supabase),
       import('@/lib/db/agents').then(m => m.getAgents()),
       getMasterBrainContext(),
-      getRecentMessagesForAI(session.id, 10),
+      getRecentMessagesForAI(session.id, 10, today),
       getLogsForDay(today, supabase),
       // Always try to fetch the currently active routine (null if none)
       session.active_routine_id ? fetchRoutine(session.active_routine_id) : Promise.resolve(null),
@@ -307,14 +307,20 @@ export async function POST(req: Request): Promise<Response> {
     if (!activeRoutine && message) {
       const HISTORICAL_INTENT_PATTERNS = [
         /\byesterday\b/i,
+        /\bday\s+before\b/i,
         /\blast\s+(week|month)\b/i,
         /\blast\s+\d+\s+days?\b/i,
         /\bsame\s+\S+\s+from\b/i,
+        /\bpreviously\b/i,
         /\bwhat\s+did\s+i\b/i,
         /\bcheck\s+my\b/i,
+        /\bhow\s+did\s+i\s+do\b/i,
         /\bhow\s+was\s+my\b/i,
         /\bsummar[iy]se?\b/i,
         /\banaly[sz]e?\b/i,
+        /\btotals?\s+for\b/i,
+        /\bsummary\s+of\b/i,
+        /\bwhat\s+about\b/i,
         /\bthat\s+(food|item|meal|drink|snack)\b/i,
       ]
       const hasHistoricalIntent = HISTORICAL_INTENT_PATTERNS.some(p => p.test(message))
@@ -399,6 +405,42 @@ export async function POST(req: Request): Promise<Response> {
     } else {
       console.log(`[ChatRoute] Using standard health prompt. daySession=${daySessionActive ? loggingDate : 'neutral'}`)
       systemPrompt = buildHealthSystemPrompt({ trackers, date: loggingDate, actualDate: today, userContext: brainContext, dayLogs, daySessionActive, historicalContext })
+    }
+
+    // Append native macro totaling for nutrition tracker (prevents LLM arithmetic errors)
+    const nutritionTracker = trackers.find(t => t.type === 'nutrition')
+    if (nutritionTracker && dayLogs && dayLogs.length > 0) {
+      // Find nutrition logs for today
+      const todayNutritionLogs = dayLogs.filter(l => l.tracker_id === nutritionTracker.id)
+      if (todayNutritionLogs.length > 0) {
+        // Calculate totals natively in JavaScript
+        const totals: Record<string, number> = {}
+        const macroFields = ['fld_calories', 'fld_protein', 'fld_carbs', 'fld_fat', 'fld_fiber']
+
+        for (const field of macroFields) {
+          let sum = 0
+          for (const log of todayNutritionLogs) {
+            const value = log.fields?.[field]
+            if (typeof value === 'number') sum += value
+          }
+          if (sum > 0) totals[field] = sum
+        }
+
+        // Map field IDs to labels for display
+        const fieldLabelMap = new Map(
+          (nutritionTracker.schema ?? []).map(f => [f.fieldId, { label: f.label, unit: f.unit }])
+        )
+        const totalsSummary = Object.entries(totals)
+          .map(([fieldId, value]) => {
+            const meta = fieldLabelMap.get(fieldId)
+            const label = meta?.label || fieldId
+            const unit = meta?.unit || ''
+            return `- ${label}: ${value}${unit ? ' ' + unit : ''}`
+          })
+          .join('\n')
+
+        systemPrompt += `\n\n## TODAY'S DAILY TOTALS (Pre-Calculated)\n${totalsSummary}\nNote: These totals have been calculated natively. Always reference these when discussing daily nutrition totals.`
+      }
     }
 
     // Build ChatInput

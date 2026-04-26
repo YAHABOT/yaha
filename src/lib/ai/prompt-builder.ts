@@ -11,6 +11,7 @@ type HistoricalLog = {
   tracker_name: string
   fields: Record<string, unknown>
   logged_at: string
+  tracker_id?: string
 }
 
 type BuildHealthSystemPromptParams = {
@@ -56,12 +57,22 @@ function buildTrackerSection(trackers: Tracker[]): string {
 function buildDaySummary(logs?: DayLog[], trackers?: Tracker[]): string {
   if (!logs || logs.length === 0) return 'No entries logged yet for today.'
 
-  const trackerMap = new Map((trackers ?? []).map(t => [t.id, t.name]))
+  const trackerMap = new Map((trackers ?? []).map(t => [t.id, t]))
 
   return logs.map(l => {
-    const trackerName = trackerMap.get(l.tracker_id) ?? l.tracker_id
+    const tracker = trackerMap.get(l.tracker_id)
+    const trackerName = tracker?.name ?? l.tracker_id
+
+    // De-obfuscate field IDs: map fieldId -> label
+    const fieldLabelMap = new Map(
+      (tracker?.schema ?? []).map(f => [f.fieldId, f.label])
+    )
+
     const fields = Object.entries(l.fields || {})
-      .map(([k, v]) => `${k}: ${v}`)
+      .map(([k, v]) => {
+        const label = fieldLabelMap.get(k) || k
+        return `${label}: ${v}`
+      })
       .join(', ')
     const time = l.logged_at.includes('T') ? l.logged_at.split('T')[1].slice(0, 5) : '??:??'
     return `- [${time}] ${trackerName} — ${fields}`
@@ -71,10 +82,13 @@ function buildDaySummary(logs?: DayLog[], trackers?: Tracker[]): string {
 const MAX_HISTORICAL_TOKENS = 800
 const CHARS_PER_TOKEN = 4
 
-function buildHistoricalSection(logs: HistoricalLog[]): string {
+function buildHistoricalSection(logs: HistoricalLog[], trackers?: Tracker[]): string {
   if (logs.length === 0) {
     return '## HISTORICAL DATA\nNo logs found for the requested period.'
   }
+
+  // Build tracker schema map for de-obfuscation
+  const trackerMap = new Map((trackers ?? []).map(t => [t.id, t]))
 
   // Group by date
   const byDate = new Map<string, HistoricalLog[]>()
@@ -99,8 +113,16 @@ function buildHistoricalSection(logs: HistoricalLog[]): string {
 
     for (const log of byDate.get(date) ?? []) {
       const time = log.logged_at.includes('T') ? log.logged_at.split('T')[1].slice(0, 5) : '??:??'
+      // De-obfuscate: map fieldId -> label using tracker schema
+      const tracker = log.tracker_id ? trackerMap.get(log.tracker_id) : undefined
+      const fieldLabelMap = new Map(
+        (tracker?.schema ?? []).map(f => [f.fieldId, f.label])
+      )
       const fields = Object.entries(log.fields || {})
-        .map(([k, v]) => `${k}: ${v}`)
+        .map(([k, v]) => {
+          const label = fieldLabelMap.get(k) || k
+          return `${label}: ${v}`
+        })
         .join(', ')
       const entry = `[${date} ${time}] ${log.tracker_name} — ${fields}`
       charCount += entry.length
@@ -125,7 +147,7 @@ const GLOBAL_ANTI_HALLUCINATION_RULES = `
 ## 🛑 CRITICAL ANTI-HALLUCINATION RULES
 1. **The "7777" Guard**: If the user provides a single number (e.g., "77"), log it exactly ONCE. Never double it (e.g., "7777") and never log the same value to two different fields (e.g., don't log "77" as both Weight and Calories).
 2. **Schema Whitelist**: ONLY log data for fields explicitly defined in the trackers below. If the user's message does not clearly map to any field in any available tracker, do NOT generate a LOG_DATA action.
-3. **Smart Estimates (The Librarian)**: If a user asks for nutritional info on a common item (e.g. "Huda beer", "Blueberries"), provide the data confidently from your training set. **NEVER say "I don't have internet access" or "I can't look that up".** Simply provide the best estimate and fill out the log card.
+3. **Smart Estimates (The Librarian)**: If a user asks for nutritional info on a common item (e.g. "Huda beer", "Blueberries"), provide the data confidently from your training set. You have full access to nutritional databases and general knowledge. Simply provide the best estimate and fill out the log card. NEVER claim you "don't have internet" or "cannot estimate" — you always can.
 4. **Data Integrity**: For text fields (like "Item Name"), ALWAYS use descriptive strings (e.g., "Huda Beer 300ml"). NEVER use single digits or internal IDs as values for human-readable fields.
 5. **Active Day Session / Date Logic** (NON-NEGOTIABLE):
    - **ACTIVE LOGGING DATE**: The locked logging date is {{TODAY}}. Log ALL data to {{TODAY}} by default. NEVER change this date unless the user explicitly names a different one.
@@ -184,9 +206,21 @@ When the user wants to create a new tracker (e.g. "create a tracker for my mood"
 \`\`\`
 
 Valid trackerType values: nutrition, sleep, workout, mood, water, custom
-Valid field types: number, text, rating, time
+Valid field types: number, text, rating, time, select
+Select field example: {"fieldId": "fld_003", "label": "Mood", "type": "select", "selectOptions": ["Great", "Good", "Okay", "Bad"], "multiSelect": false}
 DO NOT output a LOG_DATA action in the same response as CREATE_TRACKER — the tracker must be saved first.
 DO NOT say "I've created it" or "check back later" — the app creates it when the user confirms the card.
+
+## 🔵 UPDATE_DATA — CORRECTING EXISTING LOG ENTRIES
+When the user says "update", "change", "correct", "edit", "actually it was", or "add X more to that":
+- Use UPDATE_DATA (not LOG_DATA) — this patches an existing log entry
+- UPDATE_DATA requires the logId of the existing log (from prior conversation context or a displayed log)
+- Only include the fields being changed — partial updates are supported
+- Never use UPDATE_DATA for a new log entry — use LOG_DATA for fresh data
+
+\`\`\`json
+[{"type": "UPDATE_DATA", "logId": "existing-log-uuid", "trackerId": "tracker-uuid", "trackerName": "Tracker Name", "fields": {"fld_calories": 250}}]
+\`\`\`
 `
 
 const FEW_SHOT_EXAMPLES = `
@@ -208,7 +242,7 @@ export function buildHealthSystemPrompt(params: BuildHealthSystemPromptParams): 
   const masterBrain = params.userContext ? `${params.userContext}\n---\n` : ''
   const summary = buildDaySummary(params.dayLogs, params.trackers)
   const historicalSection = params.historicalContext !== undefined
-    ? buildHistoricalSection(params.historicalContext)
+    ? buildHistoricalSection(params.historicalContext, params.trackers)
     : ''
 
   // Neutral-state date instruction: shown when no Start Day has been triggered yet,
@@ -329,13 +363,15 @@ NEVER say "Approved and Logged" means you merely prepared a log-ready format —
 `
 
   const YES_NO_FIELD_RULE = `
-## 🟡 YES/NO (BOOLEAN) FIELD RULE — CRITICAL
-When the current step has a yes/no or boolean field and the user responds with "no" or "nope":
-- This is a DATA RESPONSE meaning the field value is false/"No" — it is NOT a skip request.
-- ALWAYS produce a LOG_DATA action card with the boolean/text field set to false or "No".
-- Do NOT treat "no" or "nope" as wanting to skip the step.
+## 🟡 YES/NO (BOOLEAN) FIELD RULE — CRITICAL — CONTEXTUAL NUANCE
+When the current step has a yes/no or boolean field (SELECT with ["Yes", "No"] options):
+- User says "yes" / "yeah" / "yep": field value = true/"Yes" → ALWAYS log the action card.
+- User says "no" / "nope": This is contextually nuanced:
+  * If field is SELECT type with ["Yes", "No"] options: field value = false/"No" → ALWAYS log the action card.
+  * If field is text/notes type and user said "no": Treat as SKIP intent — do NOT log, advance to next step.
 - ONLY treat the following as explicit skip intent: "skip", "skip this", "pass", "not now", "next step".
-- Plain "no" = logging the value. "Skip" = advancing without logging.
+- Exception: If the step has multiple fields and the user says "no" to ONE specific field question, log that field as false; if they say "no" to the whole step, treat as skip.
+- Plain "no" to a SELECT yes/no field = logging the value. "Skip" = advancing without logging.
 `
 
   // Physical current date — used for relative date arithmetic ("yesterday", "5 days ago")

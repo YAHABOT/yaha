@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Paperclip, Send, X, Bot, Zap, CheckCircle2, ChevronRight, Menu, Image, FileText, Camera } from 'lucide-react'
-import { ActionCard } from '@/components/chat/ActionCard'
+import { ActionCard, UpdateDataCardComponent } from '@/components/chat/ActionCard'
 import { CreateTrackerCard } from '@/components/chat/CreateTrackerCard'
 import { AgentSelector } from '@/components/chat/AgentSelector'
 import { ChatSidebar } from '@/components/chat/ChatSidebar'
@@ -973,6 +973,25 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
                     if (card.type === 'CREATE_TRACKER') {
                       return (
                         <CreateTrackerCard
+                          key={idx}
+                          card={card}
+                          messageId={message.id}
+                          cardIndex={idx}
+                          onConfirm={() => {
+                            setMessages(prev => prev.map(msg => {
+                              if (msg.id !== message.id || !msg.actions) return msg
+                              const updatedActions = msg.actions.map((a, i) =>
+                                i === idx ? { ...a, confirmed: true } : a
+                              )
+                              return { ...msg, actions: updatedActions }
+                            }))
+                          }}
+                        />
+                      )
+                    }
+                    if (card.type === 'UPDATE_DATA') {
+                      return (
+                        <UpdateDataCardComponent
                           key={idx}
                           card={card}
                           messageId={message.id}

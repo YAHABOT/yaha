@@ -1,8 +1,8 @@
-import type { ActionCard, CreateTrackerCard, AnyActionCard } from '@/types/action-card'
+import type { ActionCard, CreateTrackerCard, UpdateDataCard, AnyActionCard } from '@/types/action-card'
 
 const VALID_SOURCES = new Set(['chat', 'telegram', 'manual'])
 const VALID_TRACKER_TYPES = new Set(['nutrition', 'sleep', 'workout', 'mood', 'water', 'custom'])
-const VALID_FIELD_TYPES = new Set(['number', 'text', 'rating', 'time'])
+const VALID_FIELD_TYPES = new Set(['number', 'text', 'rating', 'time', 'select'])
 
 export function parseActionCards(responseText: string): AnyActionCard[] {
   const cards: AnyActionCard[] = []
@@ -62,10 +62,33 @@ export function parseActionCards(responseText: string): AnyActionCard[] {
   return cards
 }
 
+export function validateUpdateDataCard(c: Record<string, unknown>): UpdateDataCard | null {
+  if (typeof c.logId !== 'string' || c.logId.trim().length === 0) return null
+  if (typeof c.trackerId !== 'string' || c.trackerId.trim().length === 0) return null
+  if (typeof c.trackerName !== 'string') return null
+  if (!c.fields || typeof c.fields !== 'object' || Array.isArray(c.fields)) return null
+
+  return {
+    type: 'UPDATE_DATA',
+    logId: c.logId.trim(),
+    trackerId: c.trackerId.trim(),
+    trackerName: c.trackerName,
+    fields: c.fields as Record<string, number | string | string[] | null>,
+    ...(c.fieldLabels && typeof c.fieldLabels === 'object' && !Array.isArray(c.fieldLabels)
+      ? { fieldLabels: c.fieldLabels as Record<string, string> }
+      : {}),
+    ...(c.fieldUnits && typeof c.fieldUnits === 'object' && !Array.isArray(c.fieldUnits)
+      ? { fieldUnits: c.fieldUnits as Record<string, string> }
+      : {}),
+    ...(Array.isArray(c.fieldOrder) ? { fieldOrder: (c.fieldOrder as unknown[]).map(String) } : {}),
+  }
+}
+
 function validateAnyCard(card: unknown): AnyActionCard | null {
   if (!card || typeof card !== 'object') return null
   const c = card as Record<string, unknown>
   if (c.type === 'CREATE_TRACKER') return validateCreateTrackerCard(c)
+  if (c.type === 'UPDATE_DATA') return validateUpdateDataCard(c)
   return validateActionCard(card)
 }
 
@@ -81,12 +104,23 @@ export function validateCreateTrackerCard(c: Record<string, unknown>): CreateTra
   const rawSchema = Array.isArray(c.schema) ? c.schema : []
   const schema: CreateTrackerCard['schema'] = rawSchema
     .filter((f): f is Record<string, unknown> => !!f && typeof f === 'object')
-    .map(f => ({
-      fieldId: typeof f.fieldId === 'string' ? f.fieldId : `fld_${Math.random().toString(36).slice(2, 7)}`,
-      label: typeof f.label === 'string' ? f.label : 'Field',
-      type: VALID_FIELD_TYPES.has(f.type as string) ? (f.type as 'number' | 'text' | 'rating' | 'time') : 'text',
-      ...(typeof f.unit === 'string' ? { unit: f.unit } : {}),
-    }))
+    .map(f => {
+      const fieldType = VALID_FIELD_TYPES.has(f.type as string)
+        ? (f.type as 'number' | 'text' | 'rating' | 'time' | 'select')
+        : 'text'
+      return {
+        fieldId: typeof f.fieldId === 'string' ? f.fieldId : `fld_${Math.random().toString(36).slice(2, 7)}`,
+        label: typeof f.label === 'string' ? f.label : 'Field',
+        type: fieldType,
+        ...(typeof f.unit === 'string' ? { unit: f.unit } : {}),
+        ...(fieldType === 'select' && Array.isArray(f.selectOptions)
+          ? { selectOptions: (f.selectOptions as unknown[]).map(o => String(o)) }
+          : {}),
+        ...(fieldType === 'select' && typeof f.multiSelect === 'boolean'
+          ? { multiSelect: f.multiSelect }
+          : {}),
+      }
+    })
 
   return {
     type: 'CREATE_TRACKER',
@@ -176,8 +210,8 @@ function resolveField(
 export function sanitizeFields(
   fields: Record<string, unknown>,
   schema: SchemaField[]
-): Record<string, number | string | null> {
-  const result: Record<string, number | string | null> = {}
+): Record<string, number | string | string[] | null> {
+  const result: Record<string, number | string | string[] | null> = {}
   const labelIndex = buildLabelIndex(schema)
 
   // Track which incoming field keys have been consumed to prevent double-logging
@@ -250,6 +284,27 @@ export function sanitizeFields(
       }
 
       result[schemaDef.fieldId] = rounded
+    } else if (schemaDef.type === 'select') {
+      // Handle select fields — may be single string or array of strings
+      if (Array.isArray(raw)) {
+        // Multi-select: array of values
+        const validOptions = schemaDef.selectOptions || []
+        const selected = raw
+          .map(item => String(item).trim())
+          .filter(item => validOptions.length === 0 || validOptions.includes(item))
+        result[schemaDef.fieldId] = selected.length > 0 ? selected : null
+      } else if (raw !== null && raw !== undefined) {
+        // Single select: convert to string and validate against options
+        const strValue = String(raw).trim()
+        const validOptions = schemaDef.selectOptions || []
+        if (validOptions.length === 0 || validOptions.includes(strValue)) {
+          result[schemaDef.fieldId] = strValue
+        } else {
+          result[schemaDef.fieldId] = null
+        }
+      } else {
+        result[schemaDef.fieldId] = null
+      }
     } else {
       result[schemaDef.fieldId] = raw !== null ? String(raw) : null
     }

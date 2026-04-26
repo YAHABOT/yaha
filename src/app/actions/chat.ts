@@ -2,7 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { createServerClient } from '@/lib/supabase/server'
-import type { ActionCard, CreateTrackerCard } from '@/types/action-card'
+import { sanitizeFields } from '@/lib/ai/actions'
+import type { ActionCard, UpdateDataCard, CreateTrackerCard } from '@/types/action-card'
+import type { SchemaField } from '@/types/tracker'
 
 export async function confirmLogAction(
   card: ActionCard,
@@ -39,7 +41,7 @@ export async function confirmLogAction(
     const nowDateStr = now.toISOString().split('T')[0]
     const loggedAt = logDateStr === nowDateStr
       ? now.toISOString()                               // today: use exact confirmation time
-      : new Date(logDateStr + 'T12:00:00Z').toISOString() // backdated: use noon UTC to avoid day-boundary issues
+      : `${logDateStr}T${now.toISOString().split('T')[1]}` // backdated: use current wall-clock time on target date
 
     console.log('[confirmLogAction] Logging to date:', logDateStr, '— loggedAt:', loggedAt, '— tracker:', card.trackerId)
 
@@ -124,6 +126,111 @@ export async function confirmLogAction(
     return { success: true }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Failed to confirm log' }
+  }
+}
+
+export async function updateLogAction(
+  card: UpdateDataCard,
+  messageId?: string,
+  cardIndex?: number
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    if (!card.logId) return { error: 'Log ID is required' }
+    if (!card.trackerId) return { error: 'Tracker ID is required' }
+    if (!card.fields || Object.keys(card.fields).length === 0) {
+      return { error: 'Fields are required' }
+    }
+
+    const supabase = await createServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    // Verify the log belongs to the user by checking tracker ownership
+    // Also fetch schema so we can sanitize incoming fields before writing
+    const { data: tracker } = await supabase
+      .from('trackers')
+      .select('id, schema')
+      .eq('id', card.trackerId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!tracker) {
+      return { error: 'Tracker not found or you do not have permission to update this log' }
+    }
+
+    // Verify the log exists
+    const { data: existingLog } = await supabase
+      .from('tracker_logs')
+      .select('id, fields')
+      .eq('id', card.logId)
+      .eq('tracker_id', card.trackerId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!existingLog) {
+      return { error: 'Log entry not found' }
+    }
+
+    // Sanitize incoming fields against tracker schema before merging —
+    // prevents arbitrary JSONB from AI output landing in the DB unchecked
+    const trackerSchema = (tracker.schema ?? []) as SchemaField[]
+    const sanitized = sanitizeFields(card.fields as Record<string, unknown>, trackerSchema)
+    const mergedFields = { ...existingLog.fields as Record<string, unknown>, ...sanitized }
+
+    // Update the log entry — user_id filter enforces ownership at mutation level (defense in depth)
+    const { error } = await supabase
+      .from('tracker_logs')
+      .update({ fields: mergedFields })
+      .eq('id', card.logId)
+      .eq('user_id', user.id)
+
+    if (error) return { error: `Failed to update log: ${error.message}` }
+
+    // Persist confirmed: true onto the matching action card in the message JSONB
+    if (messageId) {
+      const { data: msg } = await supabase
+        .from('chat_messages')
+        .select('actions, session_id')
+        .eq('id', messageId)
+        .single()
+
+      if (msg) {
+        const { error: sessErr } = await supabase
+          .from('chat_sessions')
+          .select('id')
+          .eq('id', msg.session_id as string)
+          .eq('user_id', user.id)
+          .single()
+
+        if (sessErr) {
+          console.error('[updateLogAction] Session ownership check failed — confirmed state not persisted:', sessErr.message)
+        } else {
+          const rawActions = msg.actions as UpdateDataCard[] ?? []
+          const actions = rawActions.map((a: UpdateDataCard, i: number) => {
+            const matches = cardIndex !== undefined
+              ? i === cardIndex
+              : a.logId === card.logId
+            return matches ? { ...a, confirmed: true } : a
+          })
+          const { error: updateErr } = await supabase
+            .from('chat_messages')
+            .update({ actions })
+            .eq('id', messageId)
+          if (updateErr) {
+            console.error('[updateLogAction] Failed to persist confirmed state:', updateErr.message)
+          }
+        }
+      }
+    }
+
+    revalidatePath('/journal')
+    revalidatePath('/dashboard')
+    revalidatePath('/trackers', 'layout')
+    revalidatePath('/chat')
+
+    return { success: true }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to update log' }
   }
 }
 

@@ -8,6 +8,7 @@ const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: 'text', label: 'Text' },
   { value: 'rating', label: 'Rating' },
   { value: 'time', label: 'Time' },
+  { value: 'select', label: 'Select' },
 ]
 
 type Props = {
@@ -34,7 +35,15 @@ export function SchemaFieldRow({
   }
 
   function handleTypeChange(value: string): void {
-    onChange({ ...field, type: value as FieldType })
+    const newType = value as FieldType
+    if (newType !== 'select') {
+      // Clear stale select-only properties when switching away from select
+      const { selectOptions: _so, multiSelect: _ms, ...rest } = field
+      void _so; void _ms
+      onChange({ ...rest, type: newType })
+    } else {
+      onChange({ ...field, type: newType })
+    }
   }
 
   function handleUnitChange(value: string): void {
@@ -110,6 +119,41 @@ export function SchemaFieldRow({
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Select-type extras — only shown when type === 'select' */}
+      {field.type === 'select' && (
+        <div className="flex flex-col gap-2 border-l-2 border-white/10 pl-2 sm:pl-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black uppercase tracking-widest text-textMuted">
+              Options (one per line)
+            </label>
+            <textarea
+              value={field.selectOptions?.join('\n') ?? ''}
+              onChange={(e) => {
+                const parsed = e.target.value
+                  .split('\n')
+                  .map(o => o.trim())
+                  .filter(o => o.length > 0)
+                onChange({ ...field, selectOptions: parsed })
+              }}
+              rows={3}
+              placeholder={"Great\nGood\nOkay\nBad"}
+              className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-textPrimary placeholder-textMuted/20 focus:border-white/30 focus:outline-none focus:ring-1 focus:ring-white/10 transition-all resize-none"
+              aria-label="Select options"
+            />
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 select-none">
+            <input
+              type="checkbox"
+              checked={field.multiSelect ?? false}
+              onChange={() => onChange({ ...field, multiSelect: !(field.multiSelect ?? false) })}
+              className="h-4 w-4 rounded border border-white/20 bg-black/40 accent-nutrition cursor-pointer"
+              aria-label="Allow multiple selections"
+            />
+            <span className="text-xs font-bold text-textMuted">Allow multiple selections</span>
+          </label>
+        </div>
+      )}
     </div>
   )
 }

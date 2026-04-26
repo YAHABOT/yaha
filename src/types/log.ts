@@ -1,6 +1,6 @@
 export type LogSource = 'manual' | 'web' | 'telegram' | 'chat'
 
-export type LogFields = Record<string, number | string | null>
+export type LogFields = Record<string, number | string | string[] | null>
 
 export type TrackerLog = {
   id: string

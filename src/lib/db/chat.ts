@@ -252,7 +252,8 @@ export async function updateRoutineStep(sessionId: string, step: number | null):
 
 export async function getRecentMessagesForAI(
   sessionId: string,
-  limit: number = DEFAULT_AI_CONTEXT_LIMIT
+  limit: number = DEFAULT_AI_CONTEXT_LIMIT,
+  filterDate?: string  // Optional: filter to only messages from this date (YYYY-MM-DD)
 ): Promise<ChatMessage[]> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -268,12 +269,24 @@ export async function getRecentMessagesForAI(
 
   if (sessionError) throw new Error(`Failed to fetch messages for AI: ${sessionError.message}`)
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('chat_messages')
     .select(MESSAGE_COLUMNS)
     .eq('session_id', sessionId)
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  // Optional: filter to messages created on a specific date (prevents cross-day pollution)
+  if (filterDate && /^\d{4}-\d{2}-\d{2}$/.test(filterDate)) {
+    // Calculate start and end of day in UTC (created_at is always UTC in the DB)
+    const dateStart = new Date(`${filterDate}T00:00:00.000Z`).toISOString()
+    const dateEnd = new Date(`${filterDate}T23:59:59.999Z`).toISOString()
+    query = query
+      .gte('created_at', dateStart)
+      .lt('created_at', dateEnd)
+  }
+
+  const { data, error } = await query
 
   if (error) throw new Error(`Failed to fetch messages for AI: ${error.message}`)
 

@@ -1,23 +1,37 @@
-export type ActionCardType = 'LOG_DATA' | 'CREATE_TRACKER'
+export type ActionCardType = 'LOG_DATA' | 'UPDATE_DATA' | 'CREATE_TRACKER'
 
 export type SchemaFieldDef = {
   fieldId: string
   label: string
-  type: 'number' | 'text' | 'rating' | 'time'
+  type: 'number' | 'text' | 'rating' | 'time' | 'select'
   unit?: string
+  selectOptions?: string[]
+  multiSelect?: boolean
 }
 
 export type ActionCard = {
   type: 'LOG_DATA'
   trackerId: string
   trackerName: string
-  fields: Record<string, number | string | null>
+  fields: Record<string, number | string | string[] | null>
   fieldLabels?: Record<string, string>
   fieldUnits?: Record<string, string>
   fieldOrder?: string[]  // Explicit schema order — arrays survive JSONB without key reordering
   date: string // ISO date "YYYY-MM-DD"
   source: 'chat' | 'telegram' | 'manual'
   confirmed?: boolean // persisted to DB after user confirms — survives page refresh
+}
+
+export type UpdateDataCard = {
+  type: 'UPDATE_DATA'
+  logId: string            // ID of existing tracker_logs row to update
+  trackerId: string
+  trackerName: string
+  fields: Record<string, number | string | string[] | null>  // partial field updates
+  fieldLabels?: Record<string, string>
+  fieldUnits?: Record<string, string>
+  fieldOrder?: string[]
+  confirmed?: boolean
 }
 
 export type CreateTrackerCard = {
@@ -29,7 +43,7 @@ export type CreateTrackerCard = {
   confirmed?: boolean
 }
 
-export type AnyActionCard = ActionCard | CreateTrackerCard
+export type AnyActionCard = ActionCard | UpdateDataCard | CreateTrackerCard
 
 export type ChatAttachment = {
   type: 'image' | 'audio' | 'file'

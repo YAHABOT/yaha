@@ -164,6 +164,8 @@ type SchemaField = {
   label: string
   type: string
   unit?: string
+  selectOptions?: string[]
+  multiSelect?: boolean
 }
 
 const WEIGHT_SANITY_MAX = 500

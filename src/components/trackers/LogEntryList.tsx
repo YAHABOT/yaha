@@ -41,8 +41,9 @@ function getFieldType(schema: SchemaField[], fieldId: string): string {
   return field?.type ?? 'text'
 }
 
-function formatFieldValue(value: number | string | null, unit?: string): string {
+function formatFieldValue(value: number | string | string[] | null, unit?: string): string {
   if (value === null || value === '') return '---'
+  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '---'
   const display = String(value)
   return unit ? `${display} ${unit}` : display
 }

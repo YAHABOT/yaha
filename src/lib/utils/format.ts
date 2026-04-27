@@ -1,5 +1,10 @@
-export function formatFieldValue(value: number | string | null, unit?: string, label?: string): string {
+export function formatFieldValue(value: number | string | string[] | null, unit?: string, label?: string): string {
   if (value === null || value === undefined || value === '') return '---'
+
+  // Handle multi-select arrays — join with comma separator
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(', ') : '---'
+  }
   
   // Force numeric conversion if it's a valid number string
   let val = value

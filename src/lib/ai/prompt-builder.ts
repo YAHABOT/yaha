@@ -2,6 +2,7 @@ import type { Tracker } from '@/types/tracker'
 import type { Routine, RoutineStep } from '@/types/routine'
 
 type DayLog = {
+  id: string
   fields: Record<string, unknown>
   logged_at: string
   tracker_id: string
@@ -75,7 +76,7 @@ function buildDaySummary(logs?: DayLog[], trackers?: Tracker[]): string {
       })
       .join(', ')
     const time = l.logged_at.includes('T') ? l.logged_at.split('T')[1].slice(0, 5) : '??:??'
-    return `- [${time}] ${trackerName} — ${fields}`
+    return `- [${time}] ${trackerName} — ${fields} (id: ${l.id})`
   }).join('\n')
 }
 
@@ -156,8 +157,9 @@ const GLOBAL_ANTI_HALLUCINATION_RULES = `
    - NEVER use {{TODAY}} when the user has specified a different day.
 6. **Atomic Logging (Default) — Honour User Intent to Combine**: By default, each DISTINCT food item, supplement, or entity MUST be its own separate LOG_DATA action. Example: "Burger and Cola" = TWO LOG_DATA actions. HOWEVER: if the user explicitly says "log as one item", "combine them", "log it together", or any similar intent to merge — you MUST produce a SINGLE LOG_DATA action. When combining: the item name should reflect the combined meal; EVERY macro field (calories, protein, carbs, fat, etc.) MUST be the arithmetic sum of all constituent items — do NOT re-estimate, do NOT average, ADD the numbers. Example: Item A (300 kcal, 10g protein) + Item B (516 kcal, 51g protein) = combined (816 kcal, 61g protein). Never produce a combined entry with macros lower than the largest single item.
 7. **Tracker ID Rule**: The \`trackerId\` field in LOG_DATA MUST be the exact UUID \`id:\` value from the Available Trackers list (e.g. 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'). NEVER use tracker names, descriptions, or any placeholder text as \`trackerId\`. If you cannot find the tracker's exact ID in the list, do NOT output a LOG_DATA action. When correcting, editing, or updating data from a previous message in this conversation, you MUST use the SAME trackerId as the original action. NEVER generate a new UUID for a correction. Look up the tracker from the Available Trackers list EVERY time you write an action card — even if you think you remember it.
-8. **Tracker Creation Flow**: If you help the user CREATE a new tracker in this conversation, do NOT output a LOG_DATA action for that tracker in the same response. The tracker needs to be saved first. After creation, tell the user it's ready and they can now log to it.
-9. **No-Match Protocol**: If you cannot confidently map the user's input to at least one field in one tracker, respond conversationally ONLY — no action card. Tell the user which trackers and fields are available and ask which one to use, OR suggest creating a new tracker if nothing fits. NEVER fabricate a trackerId or fieldId that doesn't appear in the Available Trackers section below. NEVER output LOG_DATA when you are uncertain which tracker to use. (Note: this rule applies to health chat only. During routine execution, the MANDATORY OUTPUT RULE takes precedence — always append a JSON block.)
+8. **Field ID Rule (CRITICAL)**: The \`fields\` object in LOG_DATA MUST use ONLY the exact \`fieldId\` values from the Available Trackers section (e.g. 'fld_calories', 'fld_protein'). NEVER use human-readable labels as field keys (e.g. 'calories' instead of 'fld_calories' is WRONG). NEVER invent field IDs. Every field key MUST match an \`fld_*\` value shown in the Available Trackers. Incorrect field IDs cause data to land in the wrong fields or be rejected. Triple-check each field ID against the Available Trackers section EVERY TIME you create a LOG_DATA action.
+9. **Tracker Creation Flow**: If you help the user CREATE a new tracker in this conversation, do NOT output a LOG_DATA action for that tracker in the same response. The tracker needs to be saved first. After creation, tell the user it's ready and they can now log to it.
+10. **No-Match Protocol**: If you cannot confidently map the user's input to at least one field in one tracker, respond conversationally ONLY — no action card. Tell the user which trackers and fields are available and ask which one to use, OR suggest creating a new tracker if nothing fits. NEVER fabricate a trackerId or fieldId that doesn't appear in the Available Trackers section below. NEVER output LOG_DATA when you are uncertain which tracker to use. (Note: this rule applies to health chat only. During routine execution, the MANDATORY OUTPUT RULE takes precedence — always append a JSON block.)
 `
 
 const VISION_CAPABILITY = `
@@ -174,6 +176,8 @@ ATTACHMENT HANDLING (NON-NEGOTIABLE):
 - NEVER ignore attachments or proceed as if they weren't provided
 - ALWAYS extract data from attachments and include it in your action card fields
 - If an attachment is unclear, ask for clarification rather than ignoring it
+- YOU HAVE BEEN GIVEN THESE ATTACHMENTS IN THIS CONVERSATION. Do NOT say "I don't have internet", "I cannot access files", or "I cannot view images" — you can and must view them.
+- If the user says "I sent you an image" or "analyze my photo", you HAVE that image. Never deny receiving it.
 `
 
 const FOOD_LOOKUP_RULE = `
@@ -393,6 +397,15 @@ ${GLOBAL_ANTI_HALLUCINATION_RULES.replace(/{{TODAY}}/g, today).replace(/{{ACTUAL
 The word "Step" in this routine ALWAYS refers to an item in the numbered sequence below.
 It NEVER means "walking steps", "footsteps", or any other fitness metric.
 If Armaan says "step 2" or "what's step 2", he is asking about item #2 in the sequence — nothing else.
+
+## 🛑 ANTI-HALLUCINATION: NO INVENTED HISTORICAL DATA
+You are executing this routine RIGHT NOW in a SINGLE SESSION. Do NOT:
+- Claim you have completed previous steps that haven't been confirmed yet in THIS conversation
+- Reference data from "earlier" or "yesterday" unless Armaan explicitly mentioned it in THIS session
+- Fabricate past confirmations or logs that the user did not actually provide
+- Make up details about what Armaan "usually" logs — stick only to what he tells you in THIS session
+- Output completed steps in the sequence marking (✓ done) unless the user has actually confirmed logging for them
+You ONLY proceed based on data provided in the current conversation. Every step requires the user to provide data and the user to confirm the action card.
 
 ## COMPLETE ROUTINE SEQUENCE ("${routine.name}")
 ${fullSequence}

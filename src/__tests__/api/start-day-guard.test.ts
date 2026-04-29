@@ -325,7 +325,7 @@ describe('POST /api/chat — Start Day Guard (TC-02)', () => {
       message: { role: string; content: string }
       sessionId: string
     }
-    expect(body.message.content).toContain("still active")
+    expect(body.message.content).toContain("already active")
   })
 
   it('blocks Start Day when session exists for same date (trigger phrase path)', async () => {
@@ -356,8 +356,8 @@ describe('POST /api/chat — Start Day Guard (TC-02)', () => {
       message: { role: string; content: string }
       sessionId: string
     }
-    // Trigger phrase path says "Start day for X already complete. End Y's session first."
-    expect(body.message.content).toContain("already complete")
+    // Trigger phrase path: same day says "A session for X is already active..."
+    expect(body.message.content).toContain("already active")
   })
 })
 
@@ -401,7 +401,7 @@ describe('POST /api/chat — Start Day Guard (TC-03)', () => {
       message: { role: string; content: string }
       sessionId: string
     }
-    expect(body.message.content).toContain("still active")
+    expect(body.message.content).toContain("is still active")
   })
 })
 
@@ -447,7 +447,7 @@ describe('POST /api/chat — Start Day Guard (TC-04)', () => {
     const body = await res2.json() as {
       message: { role: string; content: string }
     }
-    expect(body.message.content).toContain("still active")
+    expect(body.message.content).toContain("all set to continue")
 
     // updateSession should NOT be called (guard blocked activation)
     expect(mockUpdateSession).not.toHaveBeenCalled()
@@ -489,7 +489,7 @@ describe('POST /api/chat — Start Day Guard (TC-05)', () => {
       message: { role: string; content: string }
       sessionId: string
     }
-    expect(body.message.content).toContain("already complete")
+    expect(body.message.content).toContain("already active")
     expect(body.message.content).toContain("2026-03-31")
   })
 
@@ -524,7 +524,7 @@ describe('POST /api/chat — Start Day Guard (TC-05)', () => {
     expect(mockAddMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         role: 'assistant',
-        content: expect.stringContaining("already complete"),
+        content: expect.stringContaining("already active"),
       })
     )
   })

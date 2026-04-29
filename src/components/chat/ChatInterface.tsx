@@ -454,6 +454,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
                 if (!isMountedRef.current) return
                 const newMsgId = event.messageId
                 const finalSessionId = event.sessionId ?? currentSessionId
+                const shouldAutoPromptNextStep = (event as { shouldAutoPromptNextStep?: boolean }).shouldAutoPromptNextStep ?? false
                 // Replace streaming placeholder with final persisted message
                 setStreamingText('')
                 setMessages((prev) => {
@@ -472,6 +473,17 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
                 }
                 if (routineId && finalSessionId) {
                   sessionStorage.setItem(`yaha_trigger_session_${routineId}`, finalSessionId)
+                }
+                // Auto-trigger the next routine step prompt if the current step just completed
+                if (shouldAutoPromptNextStep && finalSessionId && isMountedRef.current) {
+                  // Schedule auto-send of empty message to trigger Step 2 prompt, with a small delay
+                  // to allow UI to render the completion message first
+                  const timeoutId = setTimeout(() => {
+                    if (isMountedRef.current) {
+                      void handleSendMessage('', [], finalSessionId)
+                    }
+                  }, 600)
+                  return () => clearTimeout(timeoutId)
                 }
               } else if (event.type === 'error') {
                 throw new Error(event.error ?? 'Streaming error')

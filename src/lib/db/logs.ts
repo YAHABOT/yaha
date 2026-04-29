@@ -141,12 +141,12 @@ export async function updateLog(
       .eq('user_id', user.id)
       .single()
 
-    if (fetchError) throw new Error(`Failed to fetch log for merge: ${fetchError.message}`)
+    if (fetchError || !current) throw new Error(`Failed to fetch log for merge: ${fetchError?.message ?? 'Log not found'}`)
 
     const patchFields = Object.fromEntries(
       Object.entries(input.fields).filter(([, v]) => v !== null && v !== undefined)
     )
-    updates.fields = { ...(current?.fields as Record<string, unknown>), ...patchFields }
+    updates.fields = { ...(current.fields as Record<string, unknown>), ...patchFields }
   }
 
   if (input.logged_at !== undefined) updates.logged_at = input.logged_at

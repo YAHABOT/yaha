@@ -162,7 +162,7 @@ export async function POST(req: Request): Promise<Response> {
       getTrackersBasic(supabase),
       import('@/lib/db/agents').then(m => m.getAgents()),
       getMasterBrainContext(),
-      getRecentMessagesForAI(session.id, 10, today),
+      getRecentMessagesForAI(session.id, 30, today),
       getLogsForDay(today, supabase),
       // Always try to fetch the currently active routine (null if none)
       session.active_routine_id ? fetchRoutine(session.active_routine_id) : Promise.resolve(null),
@@ -473,10 +473,11 @@ export async function POST(req: Request): Promise<Response> {
     // Helper: sanitize raw action cards extracted from Gemini output
     function buildSanitizedActions(rawActions: AnyActionCard[]): AnyActionCard[] {
       return rawActions.map(action => {
-        if (action.type !== 'LOG_DATA') return action
+        if (action.type !== 'LOG_DATA' && action.type !== 'UPDATE_DATA') return action
 
         let actionWithDate = action
-        if (action.date && !messageHasExplicitDate) {
+        // Only apply date override to LOG_DATA (UPDATE_DATA doesn't have a date field)
+        if (action.type === 'LOG_DATA' && action.date && !messageHasExplicitDate) {
           const cardDateMs = new Date(action.date).getTime()
           if (!isNaN(cardDateMs) && (loggingDateMs - cardDateMs) > THIRTY_DAYS_MS) {
             console.log(`[ChatRoute] Date sanity override: card.date=${action.date} → loggingDate=${loggingDate}`)
@@ -549,6 +550,7 @@ export async function POST(req: Request): Promise<Response> {
           const sanitizedActions = buildSanitizedActions(rawActions)
 
           // 4. Advance Routine Step?
+          let shouldAutoPromptNextStep = false
           if (activeRoutine) {
             const currentStep = activeRoutine.steps[session.current_step_index]
             const hasLoggedCurrentStep = isSkipIntent
@@ -564,6 +566,8 @@ export async function POST(req: Request): Promise<Response> {
                 }
               } else {
                 await updateSession(session.id, { current_step_index: nextStepIndex })
+                // Flag to auto-prompt the frontend for the next step
+                shouldAutoPromptNextStep = true
               }
             }
           }
@@ -583,6 +587,7 @@ export async function POST(req: Request): Promise<Response> {
             sessionId: session.id,
             actions: sanitizedActions,
             content: fullText,
+            shouldAutoPromptNextStep,
           })}\n\n`)
         } catch (err) {
           console.error('[ChatRoute] Streaming error:', err)

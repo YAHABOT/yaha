@@ -1,6 +1,7 @@
 'use client'
 
-import { Trash2, ChevronUp, ChevronDown } from 'lucide-react'
+import { useState } from 'react'
+import { Trash2, ChevronUp, ChevronDown, Plus, X } from 'lucide-react'
 import type { SchemaField, FieldType } from '@/types/tracker'
 
 const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
@@ -10,6 +11,97 @@ const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
   { value: 'time', label: 'Time' },
   { value: 'select', label: 'Select' },
 ]
+
+type SelectOptionsEditorProps = {
+  field: SchemaField
+  onChange: (updated: SchemaField) => void
+}
+
+function SelectOptionsEditor({ field, onChange }: SelectOptionsEditorProps): React.ReactElement {
+  const [newOption, setNewOption] = useState('')
+
+  function handleAddOption(): void {
+    if (newOption.trim().length === 0) return
+    const existing = field.selectOptions ?? []
+    onChange({ ...field, selectOptions: [...existing, newOption.trim()] })
+    setNewOption('')
+  }
+
+  function handleRemoveOption(index: number): void {
+    const existing = field.selectOptions ?? []
+    onChange({ ...field, selectOptions: existing.filter((_, i) => i !== index) })
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-l-2 border-white/10 pl-2 sm:pl-4">
+      <div className="flex flex-col gap-2">
+        <label className="text-[10px] font-black uppercase tracking-widest text-textMuted">
+          Options
+        </label>
+
+        {/* Existing options as removable pills */}
+        {(field.selectOptions ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {field.selectOptions.map((opt, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 text-sm text-textPrimary"
+              >
+                <span className="font-medium">{opt}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveOption(idx)}
+                  className="text-textMuted hover:text-red-400 transition-colors"
+                  aria-label={`Remove option: ${opt}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add option row */}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newOption}
+            onChange={(e) => setNewOption(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleAddOption()
+              }
+            }}
+            placeholder="Add option..."
+            className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-textPrimary placeholder-textMuted/20 focus:border-white/30 focus:outline-none focus:ring-1 focus:ring-white/10 transition-all"
+            aria-label="New option"
+          />
+          <button
+            type="button"
+            onClick={handleAddOption}
+            className="flex h-10 w-10 items-center justify-center shrink-0 rounded-lg bg-nutrition/20 text-nutrition hover:bg-nutrition/30 transition-all active:scale-90"
+            aria-label="Add option"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Multi-select checkbox */}
+      <label className="flex cursor-pointer items-center gap-2 select-none">
+        <input
+          type="checkbox"
+          checked={field.multiSelect ?? false}
+          onChange={() => onChange({ ...field, multiSelect: !(field.multiSelect ?? false) })}
+          className="h-4 w-4 rounded border border-white/20 bg-black/40 accent-nutrition cursor-pointer"
+          aria-label="Allow multiple selections"
+        />
+        <span className="text-xs font-bold text-textMuted">Allow multiple selections</span>
+      </label>
+    </div>
+  )
+}
 
 type Props = {
   field: SchemaField
@@ -122,37 +214,10 @@ export function SchemaFieldRow({
 
       {/* Select-type extras — only shown when type === 'select' */}
       {field.type === 'select' && (
-        <div className="flex flex-col gap-2 border-l-2 border-white/10 pl-2 sm:pl-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black uppercase tracking-widest text-textMuted">
-              Options (one per line)
-            </label>
-            <textarea
-              value={field.selectOptions?.join('\n') ?? ''}
-              onChange={(e) => {
-                const parsed = e.target.value
-                  .split('\n')
-                  .map(o => o.trim())
-                  .filter(o => o.length > 0)
-                onChange({ ...field, selectOptions: parsed })
-              }}
-              rows={3}
-              placeholder={"Great\nGood\nOkay\nBad"}
-              className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-textPrimary placeholder-textMuted/20 focus:border-white/30 focus:outline-none focus:ring-1 focus:ring-white/10 transition-all resize-none"
-              aria-label="Select options"
-            />
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 select-none">
-            <input
-              type="checkbox"
-              checked={field.multiSelect ?? false}
-              onChange={() => onChange({ ...field, multiSelect: !(field.multiSelect ?? false) })}
-              className="h-4 w-4 rounded border border-white/20 bg-black/40 accent-nutrition cursor-pointer"
-              aria-label="Allow multiple selections"
-            />
-            <span className="text-xs font-bold text-textMuted">Allow multiple selections</span>
-          </label>
-        </div>
+        <SelectOptionsEditor
+          field={field}
+          onChange={onChange}
+        />
       )}
     </div>
   )

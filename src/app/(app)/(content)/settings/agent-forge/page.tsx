@@ -1,6 +1,6 @@
 import { getAgents } from '@/lib/db/agents'
 import { AgentForgeList } from '@/components/agents/AgentForgeList'
-import { Plus, Bot, ChevronLeft } from 'lucide-react'
+import { Bot, ChevronLeft } from 'lucide-react'
 import Link from 'next/link'
 
 export default async function AgentForgePage() {

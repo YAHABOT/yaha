@@ -70,7 +70,6 @@ function DeveloperButton({
 
 export function SettingsForm({ initialValues }: Props): React.ReactElement {
   const [saveState, setSaveState] = useState<SaveState>('idle')
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const [confirmOnRefresh, setConfirmOnRefresh] = useState<boolean>(
     initialValues?.stats?.confirmOnRefresh ?? true
@@ -82,13 +81,11 @@ export function SettingsForm({ initialValues }: Props): React.ReactElement {
     const formData = new FormData(form)
 
     setSaveState('saving')
-    setErrorMessage(null)
 
     startTransition(async () => {
       const result = await saveSettingsAction(formData)
       if (result.error) {
         setSaveState('error')
-        setErrorMessage(result.error)
       } else {
         setSaveState('saved')
         setTimeout(() => setSaveState('idle'), SAVE_RESET_DELAY_MS)

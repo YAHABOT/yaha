@@ -91,7 +91,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
 
       // Stub: getSession call (verify ownership)
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -123,7 +123,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       ]
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -153,7 +153,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       ]
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -182,7 +182,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       ]
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -209,7 +209,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       const messagesOnDay = [] // 00:00:00 UTC of next day should be excluded
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -233,7 +233,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
 
       // Invalid format should be rejected
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -263,7 +263,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       ]
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -293,7 +293,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       )
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -321,7 +321,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       )
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -346,7 +346,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       setAuthenticatedUser()
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -369,7 +369,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       setAuthenticatedUser()
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -403,7 +403,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       ]
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {
@@ -454,7 +454,7 @@ describe('getRecentMessagesForAI — Message History Filtering', () => {
       ]
 
       let callCount = 0
-      mockFrom.mockImplementation((table: string) => {
+      mockFrom.mockImplementation(() => {
         const builder = createQueryBuilder()
 
         if (callCount === 0) {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Plus, Check, ChevronDown, Zap, Bot } from 'lucide-react'
+import { Plus, Check, ChevronDown, Bot } from 'lucide-react'
 import type { Agent } from '@/types/agent'
 
 type Props = {

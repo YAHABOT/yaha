@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X, Save, Shield, Terminal, Target, Check } from 'lucide-react'
-import type { Routine, CreateRoutineInput, RoutineStep, RoutineType } from '@/types/routine'
+import type { Routine, RoutineStep, RoutineType } from '@/types/routine'
 import type { Tracker } from '@/types/tracker'
 import { createRoutineAction, updateRoutineAction } from '@/app/actions/routines'
 

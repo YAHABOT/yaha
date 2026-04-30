@@ -7,8 +7,6 @@ import { Plus, MessageSquare, Trash2, Check, X, Pencil, CheckSquare, Square, Arr
 import type { ChatSession } from '@/types/chat'
 import { deleteSessionAction, deleteSessionsAction, renameSessionAction } from '@/app/actions/chat'
 
-const SESSION_TITLE_MAX_LENGTH = 30
-
 type Props = {
   sessions: ChatSession[]
   currentSessionId?: string

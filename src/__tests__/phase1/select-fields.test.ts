@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { sanitizeFields } from '@/lib/ai/actions'
 import type { SchemaField } from '@/lib/ai/actions'
 

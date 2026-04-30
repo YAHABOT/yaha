@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp .claude/sessions/2026-04-29/SESSION_LOG.md ../../../.claude/sessions/2026-04-29/SESSION_LOG.md)",
+      "Bash(cp .claude/sessions/2026-04-29/MEMORY.md ../../../.claude/sessions/2026-04-29/MEMORY.md)"
+    ]
+  }
+}

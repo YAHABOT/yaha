@@ -1,4 +1,3 @@
-import { createServerClient } from '@/lib/supabase/server'
 import { evaluateFormula, buildFieldValueMap } from '@/lib/correlator/formula-engine'
 import type { Widget, WidgetValue } from '@/types/widget'
 import type { TrackerLog } from '@/types/log'

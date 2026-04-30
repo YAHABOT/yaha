@@ -180,22 +180,11 @@ function toSlug(s: string): string {
 }
 
 // Build a map from normalized label slug → fieldId for fuzzy lookup
-function buildLabelIndex(schema: SchemaField[]): Map<string, string> {
-  const index = new Map<string, string>()
-  for (const f of schema) {
-    index.set(toSlug(f.label), f.fieldId)
-    // Also index the fieldId itself (without fld_ prefix) for partial matches
-    index.set(toSlug(f.fieldId.replace(/^fld_/, '')), f.fieldId)
-  }
-  return index
-}
-
 // Find the value for a schema field by trying: exact fieldId → fuzzy label → fuzzy key slug
 function resolveField(
   fieldId: string,
   label: string,
-  fields: Record<string, unknown>,
-  labelIndex: Map<string, string>
+  fields: Record<string, unknown>
 ): unknown {
   // 1. Exact match by fieldId
   if (fields[fieldId] !== undefined) return fields[fieldId]
@@ -214,13 +203,12 @@ export function sanitizeFields(
   schema: SchemaField[]
 ): Record<string, number | string | string[] | null> {
   const result: Record<string, number | string | string[] | null> = {}
-  const labelIndex = buildLabelIndex(schema)
 
   // Track which incoming field keys have been consumed to prevent double-logging
   const consumed = new Set<string>()
 
   for (const schemaDef of schema) {
-    let raw = resolveField(schemaDef.fieldId, schemaDef.label, fields, labelIndex)
+    let raw = resolveField(schemaDef.fieldId, schemaDef.label, fields)
 
     // Track which key was matched so we don't re-use it
     if (raw !== undefined) {

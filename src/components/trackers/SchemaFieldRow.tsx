@@ -42,7 +42,7 @@ function SelectOptionsEditor({ field, onChange }: SelectOptionsEditorProps): Rea
         {/* Existing options as removable pills */}
         {(field.selectOptions ?? []).length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {field.selectOptions.map((opt, idx) => (
+            {(field.selectOptions ?? []).map((opt, idx) => (
               <div
                 key={idx}
                 className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-1.5 text-sm text-textPrimary"

@@ -480,7 +480,7 @@ export function ChatInterface({ initialMessages, sessionId, session: initialSess
                   // to allow UI to render the completion message first
                   const timeoutId = setTimeout(() => {
                     if (isMountedRef.current) {
-                      void handleSendMessage('', [], finalSessionId)
+                      void handleSendSilent('')
                     }
                   }, 600)
                   return () => clearTimeout(timeoutId)

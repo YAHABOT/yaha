@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 import type { ChatInput, GeminiResponse } from '@/types/action-card'
 import { parseActionCards } from './actions'
 
-export const GEMINI_MODEL = 'gemini-2.5-flash'
+export const GEMINI_MODEL = 'gemini-3-1-flash-lite'
 
 let genAI: GoogleGenerativeAI | null = null
 

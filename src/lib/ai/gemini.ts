@@ -4,10 +4,16 @@ import { parseActionCards } from './actions'
 
 export const GEMINI_MODEL = 'gemini-2.5-flash'
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY environment variable is not set')
+let genAI: GoogleGenerativeAI | null = null
 
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
+function getGenAI(): GoogleGenerativeAI {
+  if (!genAI) {
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) throw new Error('GEMINI_API_KEY environment variable is not set')
+    genAI = new GoogleGenerativeAI(apiKey)
+  }
+  return genAI
+}
 
 // Must stay in sync with ALLOWED_MIME_TYPES in src/app/api/chat/route.ts — only types Gemini can process via inlineData.
 // Office formats (docx/xlsx/xls) are intentionally excluded — Gemini does not support binary Office formats as inlineData.
@@ -63,7 +69,7 @@ export async function processHealthMessage(
   console.log(`[Gemini] Calling ${GEMINI_MODEL} with input:`, input.text)
   
   try {
-    const model = genAI.getGenerativeModel({ 
+    const model = getGenAI().getGenerativeModel({ 
       model: GEMINI_MODEL,
       systemInstruction: systemPrompt
     })
@@ -96,7 +102,7 @@ export async function* streamHealthMessage(
   console.log(`[Gemini] Streaming ${GEMINI_MODEL}...`)
   
   try {
-    const model = genAI.getGenerativeModel({ 
+    const model = getGenAI().getGenerativeModel({ 
       model: GEMINI_MODEL,
       systemInstruction: systemPrompt
     })
@@ -124,7 +130,7 @@ export async function extractFromImage(
   mimeType: string,
   prompt: string
 ): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
+  const model = getGenAI().getGenerativeModel({ model: GEMINI_MODEL })
 
   const result = await model.generateContent({
     contents: [

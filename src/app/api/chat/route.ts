@@ -162,7 +162,7 @@ export async function POST(req: Request): Promise<Response> {
       getTrackersBasic(supabase),
       import('@/lib/db/agents').then(m => m.getAgents()),
       getMasterBrainContext(),
-      getRecentMessagesForAI(session.id, 8, today),
+      getRecentMessagesForAI(session.id, 30, today),
       getLogsForDay(today, supabase),
       // Always try to fetch the currently active routine (null if none)
       session.active_routine_id ? fetchRoutine(session.active_routine_id) : Promise.resolve(null),

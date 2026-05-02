@@ -162,7 +162,7 @@ export async function POST(req: Request): Promise<Response> {
       getTrackersBasic(supabase),
       import('@/lib/db/agents').then(m => m.getAgents()),
       getMasterBrainContext(),
-      getRecentMessagesForAI(session.id, 30, today),
+      getRecentMessagesForAI(session.id, 8, today),
       getLogsForDay(today, supabase),
       // Always try to fetch the currently active routine (null if none)
       session.active_routine_id ? fetchRoutine(session.active_routine_id) : Promise.resolve(null),
@@ -251,10 +251,13 @@ export async function POST(req: Request): Promise<Response> {
     // Map history for Gemini — include stored image attachments so follow-up
     // messages like "use the photos I just sent" have the images in context.
     type ContentPart = { text: string } | { inlineData: { mimeType: string; data: string } }
+    // Only include image attachments from the 2 most recent messages — older base64
+    // blobs add megabytes to every request and are the primary latency driver.
+    const recentWithImages = new Set(historyMessages.slice(-2).map(m => m.id))
     const history = historyMessages.map(msg => {
       const parts: ContentPart[] = []
       if (msg.content) parts.push({ text: msg.content })
-      if (msg.attachments) {
+      if (msg.attachments && recentWithImages.has(msg.id)) {
         const attachArr = msg.attachments as Array<{ mimeType: string; base64: string }>
         for (const att of attachArr) {
           parts.push({ inlineData: { mimeType: att.mimeType, data: att.base64 } })
